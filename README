@@ -1,3 +1,6 @@
+With PacketOut and PacketIn actions based on version 1.4.0.015
+Contributors: Wenjian Fang
+
 POFSwitchRepo
 =============
 
@@ -380,4 +383,3 @@ A:  No. Only the packet which Dmac equal to the mac address of POFSwitch network
 	by the OpenFlow enabled network port. By default, the OpenFlow functions of all ports 
 	are disabled at beginning, so you need to enable the OpenFlow function of the data port
 	before forwarding.
-
