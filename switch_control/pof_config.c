@@ -144,13 +144,13 @@ uint32_t pofc_cmd_auto_clear = TRUE;
     CONFIG_CMD('l',"l:","log-file",log_file,"Create (l)og file: /usr/local/var/log/pofswitch.log.") \
     CONFIG_CMD('s',"s","state",state,"Print software (s)tate information.")                         \
     CONFIG_CMD('P',"P","promisc",promisc,"Enable the (P)ROMISC mode. Default is diabled.")          \
-    CONFIG_CMD('V',"V:","verbosity",verbosity,"(V)erbosity mode: debug|error|mute. Mute mode has no pof_command.")                \
+    CONFIG_CMD('V',"V:","verbosity",verbosity,"(V)erbosity mode: debug|error|mute. Mute mode has no pof_command.") \
     CONFIG_CMD('L',"L:","listen-port",listen_port,"Switch (l)istens to this port for pofsctrl. Default is 6634.") \
     CONFIG_CMD('h',"h","help",help,"Print (h)elp message.")                                         \
     CONFIG_CMD('v',"v","version",version,"Print the (v)ersion of POFSwitch.")                       \
-    CONFIG_CMD('t',"t","test",test,"(T)est.")                                                       \
     CONFIG_CMD('S',"S:","slot-num",slot_num,"Set the number of (s)lots. Default is 1.")             \
-    CONFIG_CMD('m',"m","man-clear",man_clear,"(M)anually clear the resource when disconnect.")
+    CONFIG_CMD('m',"m","man-clear",man_clear,"(M)anually clear the resource when disconnect.")      \
+    CONFIG_CMD('t',"t","test",test,"(T)est.")
 
 #define OPT_ARG char *optarg, struct pof_datapath *dp
 
