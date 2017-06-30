@@ -1482,6 +1482,15 @@ void pof_debug_cprint_packet(const void * ph, uint32_t flag, int len){
             packet_in((unsigned char *)ph + sizeof(pof_header));
 			packet_raw(ph, header_ptr);
             break;
+        case POFT_ROLE_REQUEST:
+        	POF_DEBUG_CPRINT(1,PINK,"[ROLE_REQUEST:] ");
+        	packet_raw(ph, header_ptr);
+        	break;
+        case POFT_ROLE_REPLY:
+        	POF_DEBUG_CPRINT(1,PINK,"[ROLE_REPLY:] ");
+        	packet_raw(ph, header_ptr);
+        	break;
+
         case POFT_PACKET_OUT:
             POF_DEBUG_CPRINT(1,PINK,"[PACKET_OUT:] ");
 			packet_raw(ph, header_ptr);

@@ -78,12 +78,12 @@ uint32_t poflr_set_config(uint16_t flags, uint16_t miss_send_len){
  * Discribe: This function will reply the config REQUEST from Controller
  *           through OpenFlow communication.
  ***********************************************************************/
-uint32_t poflr_reply_config(){
+uint32_t poflr_reply_config(int controller){
     pof_switch_config config = poflr_switch_config;
     pof_HtoN_transfer_switch_config(&config);
 
-    if(POF_OK != pofec_reply_msg(POFT_GET_CONFIG_REPLY, g_recv_xid, sizeof(pof_switch_config), (uint8_t *)&config)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+    if(POF_OK != pofec_reply_msg(controller,POFT_GET_CONFIG_REPLY, g_recv_xid, sizeof(pof_switch_config), (uint8_t *)&config)){
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE);
     }
 
     return POF_OK;
@@ -159,7 +159,7 @@ uint32_t poflr_reset_dev_id(){
  *           REQUEST from Controller. The switch feature will be stored
  *           in poflr_switch_feature.
  ***********************************************************************/
-uint32_t  poflr_reply_feature_resource(struct pof_local_resource *lr)
+uint32_t  poflr_reply_feature_resource(int controller,struct pof_local_resource *lr)
 {
     pof_switch_features feature = {0};
     char szVendorName[POF_NAME_MAX_LENGTH] = "Huawei";
@@ -181,8 +181,8 @@ uint32_t  poflr_reply_feature_resource(struct pof_local_resource *lr)
     memcpy(&poflr_switch_feature, &feature, sizeof(pof_switch_features));
     pof_HtoN_transfer_switch_features(&feature);
 
-    if(POF_OK != pofec_reply_msg(POFT_FEATURES_REPLY, g_recv_xid, sizeof(pof_switch_features), (uint8_t *)&feature)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+    if(POF_OK != pofec_reply_msg(controller,POFT_FEATURES_REPLY, g_recv_xid, sizeof(pof_switch_features), (uint8_t *)&feature)){
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE);
     }
 
     return POF_OK;
@@ -196,15 +196,15 @@ uint32_t  poflr_reply_feature_resource(struct pof_local_resource *lr)
  * Return:   POF_OK or ERROR code
  * Discribe: This function will reply the table resource to the Controller.
  ***********************************************************************/
-uint32_t  poflr_reply_table_resource(struct pof_local_resource *lr){
+uint32_t  poflr_reply_table_resource(int controller,struct pof_local_resource *lr){
     pof_flow_table_resource flow_table_resource = poflr_table_resource_desc;
 #ifdef POF_MULTIPLE_SLOTS
     flow_table_resource.slotID = lr->slotID;
 #endif // POF_MULTIPLE_SLOTS
     pof_HtoN_transfer_flow_table_resource(&flow_table_resource);
 
-    if(POF_OK != pofec_reply_msg(POFT_RESOURCE_REPORT, g_recv_xid, sizeof(pof_flow_table_resource), (uint8_t *)&flow_table_resource)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+    if(POF_OK != pofec_reply_msg(controller,POFT_RESOURCE_REPORT, g_recv_xid, sizeof(pof_flow_table_resource), (uint8_t *)&flow_table_resource)){
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE);
     }
 
     return POF_OK;
@@ -212,7 +212,8 @@ uint32_t  poflr_reply_table_resource(struct pof_local_resource *lr){
 
 #ifdef POF_SHT_VXLAN
 uint32_t 
-poflr_reply_slot_status(struct pof_local_resource *lr,  \
+poflr_reply_slot_status(int controller,\
+		                struct pof_local_resource *lr,  \
                         enum pof_slot_status_enum status,    \
                         enum pof_slot_resend_flag flag)
 {
@@ -224,8 +225,8 @@ poflr_reply_slot_status(struct pof_local_resource *lr,  \
 
     pof_HtoN_transfer_slot_status(&slotStatus);
 
-    if(POF_OK != pofec_reply_msg(POFT_SLOT_STATUS, g_recv_xid, sizeof(struct pof_slot_status), (uint8_t *)&slotStatus)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+    if(POF_OK != pofec_reply_msg(controller,POFT_SLOT_STATUS, g_recv_xid, sizeof(struct pof_slot_status), (uint8_t *)&slotStatus)){
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE);
     }
 
     return POF_OK;
@@ -234,26 +235,26 @@ poflr_reply_slot_status(struct pof_local_resource *lr,  \
 
 /* Reply POFT_QUERYALL_REQUEST message. */
 uint32_t
-poflr_reply_queryall(struct pof_local_resource *lr)
+poflr_reply_queryall(struct pof_local_resource *lr,int controller)
 {
     uint32_t ret;
 
 	/* Delay 0.1s. */
 	pofbf_task_delay(100);
 
-    ret = poflr_reply_table_all(lr);
+    ret = poflr_reply_table_all(lr,controller);
     POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 
-    ret = poflr_reply_entry_all(lr);
+    ret = poflr_reply_entry_all(lr,controller);
     POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
     
-    ret = poflr_reply_group_all(lr);
+    ret = poflr_reply_group_all(lr,controller);
     POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 
-    ret = poflr_reply_meter_all(lr);
+    ret = poflr_reply_meter_all(lr,controller);
     POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 
-    ret = poflr_reply_counter_all(lr);
+    ret = poflr_reply_counter_all(lr,controller);
     POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
     return POF_OK;
 }
@@ -266,11 +267,12 @@ poflr_reply_queryall(struct pof_local_resource *lr)
  * Return:   POF_OK or ERROR code
  * Discribe: This function will reply the port resource.
  ***********************************************************************/
-uint32_t  poflr_reply_port_resource(struct pof_local_resource *lr){
+uint32_t  poflr_reply_port_resource(int i,struct pof_local_resource *lr){
     struct portInfo *port, *next;
     /* Traverse all ports. */
     HMAP_NODES_IN_STRUCT_TRAVERSE(port, next, pofIndexNode, lr->portPofIndexMap){
-        poflr_port_report(POFPR_ADD, port);
+
+    	poflr_port_report(i ,POFPR_ADD, port);
     }
     return POF_OK;
 }

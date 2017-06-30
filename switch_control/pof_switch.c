@@ -49,7 +49,18 @@
 char pofsc_controller_ip_addr[POF_IP_ADDRESS_STRING_LEN] = POF_CONTROLLER_IP_ADDR;
 
 /* Controller port. */
-uint16_t pofsc_controller_port = POF_CONTROLLER_PORT_NUM;
+//uint16_t pofsc_controller_port = POF_CONTROLLER_PORT_NUM;
+
+
+/*controller information */
+
+pofsc_controller pofcontrollers[10];
+
+/*number of controllers*/
+int n_controller=0;
+int controller_index=0;
+int master_controller=-1;
+uint8_t local_port_index=0;
 
 /* The max retry time of cnnection. */
 uint32_t pofsc_conn_max_retry = POF_CONNECTION_MAX_RETRY_TIME;
@@ -58,7 +69,7 @@ uint32_t pofsc_conn_max_retry = POF_CONNECTION_MAX_RETRY_TIME;
 uint32_t pofsc_conn_retry_interval = POF_CONNECTION_RETRY_INTERVAL;
 
 /* Description of device connection. */
-volatile pofsc_dev_conn_desc pofsc_conn_desc;
+volatile pofsc_dev_conn_desc pofsc_conn_desc[10];
 
 /* Openflow action id. */
 uint32_t g_upward_xid = POF_INITIAL_XID;
@@ -66,17 +77,19 @@ uint32_t g_upward_xid = POF_INITIAL_XID;
 /* Error message. */
 pof_error pofsc_protocol_error;
 
+pthread_mutex_t mutex=PTHREAD_MUTEX_INITIALIZER;
+
 /* Task id. */
-task_t pofsc_main_task_id = 0;
-task_t pofsc_send_task_id = 0;
+task_t pofsc_main_task_id[10] = {0};
+task_t pofsc_send_task_id[10] = {0};
 task_t pofsc_listen_task_id = 0;
 
 /* Message queue. */
-uint32_t pofsc_send_q_id = POF_INVALID_QUEUEID;
-
+uint32_t pofsc_send_q_id[10] = {POF_INVALID_QUEUEID};
+uint32_t send_q_id=POF_INVALID_QUEUEID;
 /* Timer. */
 uint32_t pofsc_echo_interval = POF_ECHO_INTERVAL;
-uint32_t pofsc_echo_timer_id = 0;
+uint32_t pofsc_echo_timer_id[10] = {0};
 
 /* Openflow connect state string. */
 char *pofsc_state_str[] = {
@@ -96,26 +109,26 @@ static uint32_t pofsc_init();
 static uint32_t pofsc_destroy(struct pof_datapath *dp);
 static uint32_t pofsc_send_msg_task(void *arg_ptr);
 static uint32_t pofsc_echo_timer(uint32_t timer_id, int arg);
-static uint32_t pofsc_set_conn_attr(const char *controller_ip, uint16_t port, uint32_t retry_max, uint32_t retry_interval);
+static uint32_t pofsc_set_conn_attr(struct pofsc_controller controllers[], uint32_t retry_max, uint32_t retry_interval);
 static uint32_t pofsc_create_socket(int *socket_fd_ptr);
-static uint32_t pofsc_connect(int socket_fd, char *server_ip, uint16_t port, struct pof_datapath *dp);
-static uint32_t pofsc_recv(int socket_fd, char* buf,  int buflen, int* plen, struct pof_datapath *dp);
-static uint32_t pofsc_send(int socket_fd, char* buf, int len, struct pof_datapath *dp);
-static uint32_t pofsc_run_process(char *message, uint16_t len, struct pof_datapath *dp);
+static uint32_t pofsc_connect(int socket_fd, char *server_ip, uint16_t port, struct pof_datapath *dp,int i);
+static uint32_t pofsc_recv(int socket_fd, char* buf,  int buflen, int* plen, struct pof_datapath *dp,int i);
+static uint32_t pofsc_send(int socket_fd, char* buf, int len, struct pof_datapath *dp,int i);
+static uint32_t pofsc_run_process(int i,char *message, uint16_t len, struct pof_datapath *dp);
 static uint32_t pofsc_build_header(pof_header *header, uint8_t type, uint16_t len, uint32_t xid);
 static uint32_t pofsc_set_error(uint16_t type, uint16_t code);
 static uint32_t pofsc_build_error_msg(char *message, uint16_t *len_p);
 static uint32_t pofsc_wait_exit(struct pof_datapath *dp);
-static uint32_t pofsc_performance_after_ctrl_disconn(struct pof_datapath *dp);
+static uint32_t pofsc_performance_after_ctrl_disconn(struct pof_datapath *dp,int i);
 
 int main(int argc, char *argv[]){
     uint32_t ret = POF_OK;
     struct pof_datapath *dp = &g_dp;
 
+
     /* Initialize the config of the Soft Switch. */
     ret = pof_set_init_config(argc, argv, dp);
     POF_CHECK_RETVALUE_TERMINATE(ret);
-
 	/* Check whether the euid is root id. If not, QUIT. */
 	ret = pofsc_check_root();
 	if(POF_OK != ret){
@@ -163,31 +176,43 @@ static uint32_t pofsc_init(){
     signal(SIGPIPE, SIG_IGN);
 
     /* Set OpenFlow connection attributes. */
-    (void)pofsc_set_conn_attr(pofsc_controller_ip_addr, \
-                              pofsc_controller_port, \
+    (void)pofsc_set_conn_attr(pofcontrollers,\
                               pofsc_conn_max_retry, \
                               pofsc_conn_retry_interval);
 
     /* Create one message queue for storing messages to be sent to controller. */
-    if (POF_OK != pofbf_queue_create(&(pofsc_send_q_id))){
-        POF_ERROR_CPRINT_FL("\nCreate message queue, fail and return!");
-        return POF_ERROR;
-    }
+    int i;
+    int a[10];
+    for (i=0;i<n_controller;i++){
+       controller_index=i;
+       a[i]=i;
+       if (POF_OK != pofbf_queue_create(&(pofsc_send_q_id[i]),i)){
+            POF_ERROR_CPRINT_FL("\nCreate message queue, fail and return!");
+            return POF_ERROR;
+           }
 
-    /* Create connection and state machine task. */
-    if (POF_OK != pofbf_task_create(NULL, (void *)pofsc_main_task, &pofsc_main_task_id)){
-        POF_ERROR_CPRINT_FL("\nCreate openflow main task, fail and return!");
-        return POF_ERROR;
-    }
-    POF_DEBUG_CPRINT_FL(1,GREEN,">>Startup openflow task!");
+     /* Create connection and state machine task. */
+       if (POF_OK != pofbf_task_create(&a[i], (void *)pofsc_main_task, &pofsc_main_task_id[i])){
+            POF_ERROR_CPRINT_FL("\nCreate openflow main task, fail and return!");
+            return POF_ERROR;
+                       }
+           POF_DEBUG_CPRINT_FL(1,GREEN,">>Startup openflow task!");
 
     /* Create one task for sending  message to controller asynchronously. */
-    if (POF_OK != pofbf_task_create(NULL, (void *)pofsc_send_msg_task, &pofsc_send_task_id)){
+       if (POF_OK != pofbf_task_create(&a[i], (void *)pofsc_send_msg_task, &pofsc_send_task_id[i])){
         POF_ERROR_CPRINT_FL("\nCreate openflow main task, fail and return!");
         return POF_ERROR;
-    }
-    POF_DEBUG_CPRINT_FL(1,GREEN,">>Startup task for sending message!");
+        }
+         POF_DEBUG_CPRINT_FL(1,GREEN,">>Startup task for sending message!");
 
+
+   /* Create one timer for sending echo message. */
+       if (POF_OK != pofbf_timer_create( 1000, pofsc_echo_interval, (void *)pofsc_echo_timer, &pofsc_echo_timer_id[i])){
+           POF_ERROR_CPRINT_FL("\nCreate echo timer, fail and return!");
+           return POF_ERROR;
+        }
+         POF_DEBUG_CPRINT_FL(1,GREEN,">>Create timer for sending echo message successfully!");
+       }
     /* Create one task for listening pofsctrl. */
     if (POF_OK != pofbf_task_create(NULL, (void *)pof_switch_listen_task, &pofsc_listen_task_id)){
         POF_ERROR_CPRINT_FL("\nCreate switch listen task, fail and return!");
@@ -195,11 +220,7 @@ static uint32_t pofsc_init(){
     }
     POF_DEBUG_CPRINT_FL(1,GREEN,">>Startup task for listening pofsctrl!");
 
-    /* Create one timer for sending echo message. */
-    if (POF_OK != pofbf_timer_create( 1000, pofsc_echo_interval, (void *)pofsc_echo_timer, &pofsc_echo_timer_id)){
-        POF_ERROR_CPRINT_FL("\nCreate echo timer, fail and return!");
-        return POF_ERROR;
-    }
+
 
     return POF_OK;
 }
@@ -220,7 +241,8 @@ static uint32_t pofsc_init(){
  *           them to the other modules to handle.
  ***********************************************************************/
 static uint32_t pofsc_main_task(void *arg_ptr){
-    pofsc_dev_conn_desc *conn_desc_ptr = (pofsc_dev_conn_desc *)&pofsc_conn_desc;
+	int i=*(int*)arg_ptr;
+    pofsc_dev_conn_desc *conn_desc_ptr = (pofsc_dev_conn_desc *)&pofsc_conn_desc[i];
     pof_header          *head_ptr, head;
     int total_len = 0, tmp_len, left_len, rcv_len = 0, process_len = 0, packet_len = 0;
     int socket_fd;
@@ -230,10 +252,9 @@ static uint32_t pofsc_main_task(void *arg_ptr){
 
     /* Clear error record. */
     pofsc_protocol_error.type = 0xffff;
-
     /* State machine of the control module in Soft Switch. */
     while(1)
-    {
+    {   POF_DEBUG_CPRINT(1,GREEN,">>this is the %d controller",i);
         if(conn_desc_ptr->conn_status.state != POFCS_CHANNEL_RUN && !conn_desc_ptr->conn_retry_count){
             POF_DEBUG_CPRINT_FL(1,BLUE, ">>Openflow Channel State: %s", pofsc_state_str[conn_desc_ptr->conn_status.state]);
         }
@@ -258,10 +279,10 @@ static uint32_t pofsc_main_task(void *arg_ptr){
 					POF_DEBUG_CPRINT(1,GREEN,">>Connecting to POFController...\n");
 				}
                 ret = pofsc_connect(conn_desc_ptr->sfd, conn_desc_ptr->controller_ip, \
-                        conn_desc_ptr->controller_port, dp);
+                        conn_desc_ptr->controller_port,dp,i);
                 if(ret == POF_OK){
                     POF_DEBUG_CPRINT_FL(1,GREEN,">>Connect to controler SUC! %s: %u", \
-                                        pofsc_controller_ip_addr, POF_CONTROLLER_PORT_NUM);
+                    		conn_desc_ptr->controller_ip, conn_desc_ptr->controller_port);
                     conn_desc_ptr->conn_status.state = POFCS_CHANNEL_CONNECTED;
 					conn_desc_ptr->conn_retry_count = 0;
                 }else{
@@ -284,7 +305,7 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                                    sizeof(pof_header), \
                                    g_upward_xid++);
                 /* send hello message. */
-                ret = pofsc_send(conn_desc_ptr->sfd, (char*)&head, sizeof(pof_header), dp);
+                ret = pofsc_send(conn_desc_ptr->sfd, (char*)&head, sizeof(pof_header), dp,i);
                 if(ret == POF_OK){
                     conn_desc_ptr->conn_status.state = POFCS_HELLO;
                 }else{
@@ -300,7 +321,7 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                 rcv_len = 0;
                 process_len = 0;
                 ret = pofsc_recv(conn_desc_ptr->sfd, conn_desc_ptr->recv_buf , \
-                        POF_RECV_BUF_MAX_SIZE, &total_len, dp);
+                        POF_RECV_BUF_MAX_SIZE, &total_len, dp,i);
                 if(ret == POF_OK){
                     POF_DEBUG_CPRINT_FL(1,GREEN,">>Recevie HELLO packet SUC!");
                     HMAP_NODES_IN_STRUCT_TRAVERSE(lr, lrNext, slotNode, dp->slotMap){
@@ -317,7 +338,7 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                 head_ptr = (pof_header *)conn_desc_ptr->recv_buf;
                 while(total_len < POF_NTOHS(head_ptr->length)){
                     ret = pofsc_recv(conn_desc_ptr->sfd, conn_desc_ptr->recv_buf  + rcv_len, \
-                            POF_RECV_BUF_MAX_SIZE -rcv_len,  &tmp_len, dp);
+                            POF_RECV_BUF_MAX_SIZE -rcv_len,  &tmp_len, dp,i);
                     if(ret != POF_OK){
                         POF_ERROR_CPRINT_FL("Recv HELLO FAILE!");
                         break;
@@ -355,9 +376,10 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                 head_ptr = (pof_header *)(conn_desc_ptr->recv_buf  + process_len);
                 if(!((left_len >= sizeof(pof_header))&&(left_len >= POF_NTOHS(head_ptr->length)))){
                     ret = pofsc_recv(conn_desc_ptr->sfd, (conn_desc_ptr->recv_buf  + rcv_len), \
-                            POF_RECV_BUF_MAX_SIZE - rcv_len, &total_len, dp);
+                            POF_RECV_BUF_MAX_SIZE - rcv_len, &total_len, dp,i);
                     if(ret == POF_OK){
                         conn_desc_ptr->conn_status.state = POFCS_SET_CONFIG;
+
                     }else{
                         POF_ERROR_CPRINT_FL("Feature request FAIL!");
                         break;
@@ -369,7 +391,7 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                     head_ptr = (pof_header *)(conn_desc_ptr->recv_buf + process_len);
                     while(total_len < POF_NTOHS(head_ptr->length)){
                         ret = pofsc_recv(conn_desc_ptr->sfd, ((conn_desc_ptr->recv_buf  + rcv_len)), \
-                                POF_RECV_BUF_MAX_SIZE-rcv_len ,&tmp_len, dp);
+                                POF_RECV_BUF_MAX_SIZE-rcv_len ,&tmp_len, dp,i);
                         if(ret != POF_OK){
                             POF_ERROR_CPRINT_FL("Feature request FAIL!");
                             break;
@@ -395,8 +417,9 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                 POF_DEBUG_CPRINT_FL(1,GREEN,">>Recevie FEATURE_REQUEST packet SUC!");
                 conn_desc_ptr->conn_status.state = POFCS_SET_CONFIG;
                 packet_len = POF_NTOHS(head_ptr->length);
+                ret = pof_parse_msg_from_controller(conn_desc_ptr->recv_buf + process_len, dp,i);
 
-                ret = pof_parse_msg_from_controller(conn_desc_ptr->recv_buf + process_len, dp);
+
 
                 if(ret != POF_OK){
                     POF_ERROR_CPRINT_FL("Features request FAIL!");
@@ -418,7 +441,7 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                 head_ptr = (pof_header *)(conn_desc_ptr->recv_buf  + process_len);
                 if(!((left_len >= sizeof(pof_header))&&(left_len >= POF_NTOHS(head_ptr->length)))){
                     ret = pofsc_recv(conn_desc_ptr->sfd, (conn_desc_ptr->recv_buf  + rcv_len), \
-                            POF_RECV_BUF_MAX_SIZE - rcv_len, &total_len, dp);
+                            POF_RECV_BUF_MAX_SIZE - rcv_len, &total_len, dp,i);
                     if(ret == POF_OK){
                         conn_desc_ptr->conn_status.state = POFCS_REQUEST_GET_CONFIG;
                     }else{
@@ -432,7 +455,7 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                     head_ptr = (pof_header *)(conn_desc_ptr->recv_buf + process_len);
                     while(total_len < POF_NTOHS(head_ptr->length)){
                         ret = pofsc_recv(conn_desc_ptr->sfd, ((conn_desc_ptr->recv_buf  + rcv_len)), \
-                                POF_RECV_BUF_MAX_SIZE-rcv_len ,&tmp_len, dp);
+                                POF_RECV_BUF_MAX_SIZE-rcv_len ,&tmp_len, dp,i);
                         if(ret != POF_OK){
                             POF_ERROR_CPRINT_FL("Set config FAIL!");
                             break;
@@ -466,8 +489,9 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                 POF_DEBUG_CPRINT_FL(1,BLUE,">>Recevie SET_CONFIG packet SUC!");
                 conn_desc_ptr->conn_status.state = POFCS_REQUEST_GET_CONFIG;
                 packet_len = POF_NTOHS(head_ptr->length);
+                ret = pof_parse_msg_from_controller(conn_desc_ptr->recv_buf + process_len, dp,i);
 
-                ret = pof_parse_msg_from_controller(conn_desc_ptr->recv_buf + process_len, dp);
+
 
                 if(ret != POF_OK){
                     POF_ERROR_CPRINT_FL("Set config FAIL!");
@@ -489,7 +513,7 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                 head_ptr = (pof_header *)(conn_desc_ptr->recv_buf  + process_len);
                 if(!((left_len >= sizeof(pof_header)) && (left_len >= POF_NTOHS(head_ptr->length)))){
                     ret = pofsc_recv(conn_desc_ptr->sfd, (conn_desc_ptr->recv_buf  + rcv_len), \
-                            POF_RECV_BUF_MAX_SIZE - rcv_len, &total_len, dp);
+                            POF_RECV_BUF_MAX_SIZE - rcv_len, &total_len, dp,i);
                     if(ret == POF_OK){
                         conn_desc_ptr->conn_status.state = POFCS_CHANNEL_RUN;
                     }else{
@@ -503,7 +527,7 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                     head_ptr = (pof_header *)(conn_desc_ptr->recv_buf + process_len);
                     while(total_len < POF_NTOHS(head_ptr->length)){
                         ret = pofsc_recv(conn_desc_ptr->sfd, ((conn_desc_ptr->recv_buf  + rcv_len)), \
-                                POF_RECV_BUF_MAX_SIZE-rcv_len ,&tmp_len, dp);
+                                POF_RECV_BUF_MAX_SIZE-rcv_len ,&tmp_len, dp,i);
                         if(ret != POF_OK){
                             POF_ERROR_CPRINT_FL("Get config FAIL!");
                             break;
@@ -529,8 +553,7 @@ static uint32_t pofsc_main_task(void *arg_ptr){
 
                 POF_DEBUG_CPRINT_FL(1,GREEN,">>Recevie GET_CONFIG_REQUEST packet SUC!");
                 packet_len = POF_NTOHS(head_ptr->length);
-
-                ret = pof_parse_msg_from_controller(conn_desc_ptr->recv_buf + process_len, dp);
+                ret = pof_parse_msg_from_controller(conn_desc_ptr->recv_buf + process_len, dp,i);
                 if(ret != POF_OK){
                     POF_ERROR_CPRINT_FL("Get config FAIL!");
                     terminate_handler();
@@ -546,6 +569,10 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                 }
 
 				sleep(1);
+				if (n_controller==1){
+				    conn_desc_ptr->role=2;}
+				else{
+					conn_desc_ptr->role=1;}
                 conn_desc_ptr->conn_status.state = POFCS_CHANNEL_RUN;
 				POF_DEBUG_CPRINT(1,GREEN,">>Connect to POFController successfully!\n");
 
@@ -555,40 +582,45 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                 /* Wait to receive feature request from controller. */
                 head_ptr = (pof_header *)(conn_desc_ptr->recv_buf  + process_len);
                 if(!((left_len >= sizeof(pof_header))&&(left_len >= POF_NTOHS(head_ptr->length)))){
-                    /* Resv_buf has no space, so should move the left data to the head of the buf. */
-                    if(POF_RECV_BUF_MAX_SIZE == rcv_len){
-                        memcpy(conn_desc_ptr->recv_buf,  conn_desc_ptr->recv_buf  + process_len, left_len);
-                        rcv_len = left_len;
-                        process_len = 0;
-                    }
-                    ret = pofsc_recv(conn_desc_ptr->sfd, (conn_desc_ptr->recv_buf  + rcv_len), \
-                            POF_RECV_BUF_MAX_SIZE - rcv_len, &total_len, dp);
-                    if(ret != POF_OK){
+                /* Resv_buf has no space, so should move the left data to the head of the buf. */
+                if(POF_RECV_BUF_MAX_SIZE == rcv_len){
+                    memcpy(conn_desc_ptr->recv_buf,  conn_desc_ptr->recv_buf  + process_len, left_len);
+                    rcv_len = left_len;
+                    process_len = 0;
+                   }
+                ret = pofsc_recv(conn_desc_ptr->sfd, (conn_desc_ptr->recv_buf  + rcv_len), \
+                POF_RECV_BUF_MAX_SIZE - rcv_len, &total_len, dp, i);
+
+                if(ret != POF_OK){
+                	POF_DEBUG_CPRINT(1,GREEN,">>\n *********************************");
                         break;
-                    }
+                  }
 
-                    rcv_len += total_len;
-                    total_len += left_len;
+                rcv_len += total_len;
+                total_len += left_len;
 
-                    head_ptr = (pof_header *)(conn_desc_ptr->recv_buf + process_len);
-                    while(total_len < POF_NTOHS(head_ptr->length)){
-                        left_len = rcv_len - process_len;
-                        /* Resv_buf has no space, so should move the left data to the head of the buf. */
-                        if(POF_RECV_BUF_MAX_SIZE == rcv_len){
-                            memcpy(conn_desc_ptr->recv_buf,  conn_desc_ptr->recv_buf  + process_len, left_len);
-                            rcv_len = left_len;
-                            process_len = 0;
+                head_ptr = (pof_header *)(conn_desc_ptr->recv_buf + process_len);
+                while(total_len < POF_NTOHS(head_ptr->length)){
+                left_len = rcv_len - process_len;
+                /* Resv_buf has no space, so should move the left data to the head of the buf. */
+                if(POF_RECV_BUF_MAX_SIZE == rcv_len){
+                memcpy(conn_desc_ptr->recv_buf,  conn_desc_ptr->recv_buf  + process_len, left_len);
+                   rcv_len = left_len;
+                   process_len = 0;
+                  }
+
+                ret = pofsc_recv(conn_desc_ptr->sfd, ((conn_desc_ptr->recv_buf  + rcv_len)), \
+                               POF_RECV_BUF_MAX_SIZE-rcv_len ,&tmp_len, dp,i);
+                       if(ret != POF_OK){
+                    	   POF_DEBUG_CPRINT(1,GREEN,">>\nReceive message error");
+                          break;
                         }
-
-                        ret = pofsc_recv(conn_desc_ptr->sfd, ((conn_desc_ptr->recv_buf  + rcv_len)), \
-                                POF_RECV_BUF_MAX_SIZE-rcv_len ,&tmp_len, dp);
-                        if(ret != POF_OK){
-                            break;
-                        }
-                    total_len += tmp_len;
-                    rcv_len += tmp_len;
-                    }
+                total_len += tmp_len;
+                rcv_len += tmp_len;
+                   }
                 }
+
+
 
                 if(conn_desc_ptr->conn_status.state == POFCS_CHANNEL_INVALID){
                     break;
@@ -597,7 +629,7 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                 head_ptr = (pof_header *)(conn_desc_ptr->recv_buf  + process_len);
                 packet_len = POF_NTOHS(head_ptr->length);
                 /* Handle the message. Echo messages will be processed here and other messages will be forwarded to LUP. */
-                ret = pofsc_run_process(conn_desc_ptr->recv_buf + process_len, packet_len, dp);
+                ret = pofsc_run_process(i,conn_desc_ptr->recv_buf + process_len, packet_len, dp);
 
                 process_len += packet_len;
                 left_len = rcv_len - process_len;
@@ -620,7 +652,7 @@ static uint32_t pofsc_main_task(void *arg_ptr){
             (void)pofsc_build_error_msg(conn_desc_ptr->send_buf, (uint16_t*)&tmp_len);
 
             /* Write error message in queue for sending. */
-            ret = pofbf_queue_write(pofsc_send_q_id, conn_desc_ptr->send_buf, (uint32_t)tmp_len, POF_WAIT_FOREVER);
+            ret = pofbf_queue_write(pofsc_send_q_id[i], conn_desc_ptr->send_buf, (uint32_t)tmp_len, POF_WAIT_FOREVER);
             POF_CHECK_RETVALUE_TERMINATE(ret);
         }
     }
@@ -642,7 +674,9 @@ static uint32_t pofsc_main_task(void *arg_ptr){
  *           different tasks.
  ***********************************************************************/
 static uint32_t pofsc_send_msg_task(void *arg_ptr){
-    pofsc_dev_conn_desc *conn_desc_ptr = (pofsc_dev_conn_desc *)&pofsc_conn_desc;
+	int i=*(int*)arg_ptr;
+	POF_DEBUG_CPRINT_FL(1,BLUE, ">>this is the %d send_msg_task",i);
+    pofsc_dev_conn_desc *conn_desc_ptr = (pofsc_dev_conn_desc *)&pofsc_conn_desc[i];
     pof_header *head_ptr;
     uint32_t   ret;
     struct pof_datapath *dp = &g_dp;
@@ -663,7 +697,7 @@ static uint32_t pofsc_send_msg_task(void *arg_ptr){
             case POFCS_REQUEST_GET_CONFIG:
             case POFCS_CHANNEL_RUN:
                 /* Fetch one message from message queue. */
-                ret = pofbf_queue_read(pofsc_send_q_id, conn_desc_ptr->msg_buf, POF_QUEUE_MESSAGE_LEN, POF_WAIT_FOREVER);
+                ret = pofbf_queue_read(pofsc_send_q_id[i], conn_desc_ptr->msg_buf, POF_QUEUE_MESSAGE_LEN, POF_WAIT_FOREVER);
                 if(ret != POF_OK){
                     pofsc_set_error(POFET_SOFTWARE_FAILED, ret);
                     break;
@@ -671,7 +705,7 @@ static uint32_t pofsc_send_msg_task(void *arg_ptr){
 
                 /* Send message to server. */
                 head_ptr = (pof_header*)conn_desc_ptr->msg_buf;
-                ret = pofsc_send(conn_desc_ptr->sfd, conn_desc_ptr->msg_buf, POF_HTONS(head_ptr->length), dp);
+                ret = pofsc_send(conn_desc_ptr->sfd, conn_desc_ptr->msg_buf, POF_HTONS(head_ptr->length), dp,i);
                 if(ret != POF_OK){
                     /* Return to inalid state. */
                     conn_desc_ptr->conn_status.last_error = (uint8_t)ret;
@@ -679,7 +713,7 @@ static uint32_t pofsc_send_msg_task(void *arg_ptr){
                     conn_desc_ptr->conn_status.state = POFCS_CHANNEL_INVALID;
 
                     /* Put the message back to queue for sendding next time. */
-                    ret = pofbf_queue_write(pofsc_send_q_id, conn_desc_ptr->msg_buf, POF_HTONS(head_ptr->length), POF_WAIT_FOREVER);
+                    ret = pofbf_queue_write(pofsc_send_q_id[i], conn_desc_ptr->msg_buf, POF_HTONS(head_ptr->length), POF_WAIT_FOREVER);
                     if(ret != POF_OK){
                         pofsc_set_error(POFET_SOFTWARE_FAILED, ret);
                         break;
@@ -705,7 +739,7 @@ static uint32_t pofsc_send_msg_task(void *arg_ptr){
  *           task.
  ***********************************************************************/
 static uint32_t pofsc_echo_timer(uint32_t timer_id, int arg){
-    pofsc_dev_conn_desc *conn_desc_ptr = (pofsc_dev_conn_desc *)&pofsc_conn_desc;
+    pofsc_dev_conn_desc *conn_desc_ptr = (pofsc_dev_conn_desc *)&pofsc_conn_desc[controller_index];
     pof_header head;
     uint16_t len;
     uint32_t ret;
@@ -723,9 +757,9 @@ static uint32_t pofsc_echo_timer(uint32_t timer_id, int arg){
             /* Build echo message. */
             len = sizeof(pof_header);
             pofsc_build_header(&head, POFT_ECHO_REQUEST, len, g_upward_xid++);
-
+            POF_DEBUG_CPRINT_FL(1,BLUE, ">>the controller index is %d",controller_index);
             /* Write error message into queue for sending. */
-            ret = pofbf_queue_write(pofsc_send_q_id, (char*)&head, len, POF_WAIT_FOREVER);
+            ret = pofbf_queue_write(pofsc_send_q_id[controller_index], (char*)&head, len, POF_WAIT_FOREVER);
             if(ret != POF_OK){
                 pofsc_set_error(POFET_SOFTWARE_FAILED, ret);
             }
@@ -748,18 +782,22 @@ static uint32_t pofsc_echo_timer(uint32_t timer_id, int arg){
  * Discribe: This function sets connection atributes and stores it in
  *           pofsc_conn_desc
  ***********************************************************************/
-static uint32_t pofsc_set_conn_attr(const char *controller_ip, \
-                                    uint16_t port, \
+static uint32_t pofsc_set_conn_attr(struct pofsc_controller controllers[], \
                                     uint32_t retry_max, \
                                     uint32_t retry_interval)
 {
-    memset((void *)&pofsc_conn_desc, 0, sizeof(pofsc_dev_conn_desc));
-
-    memcpy((void*)pofsc_conn_desc.controller_ip, (void*)controller_ip, strlen(controller_ip));
-    pofsc_conn_desc.controller_port = port;
-    pofsc_conn_desc.conn_retry_max = retry_max;
-    pofsc_conn_desc.conn_retry_interval = retry_interval;
-    pofsc_conn_desc.conn_status.echo_interval = pofsc_echo_interval;
+    memset((void *)&pofsc_conn_desc, 0, 10*sizeof(pofsc_dev_conn_desc));
+    int i;
+    for (i=0;i<n_controller;i++){
+    POF_DEBUG_CPRINT_FL(1,GREEN,">>the new controller port is %d\n",pofcontrollers[i].port);
+    memcpy((void*)pofsc_conn_desc[i].controller_ip, (void*)pofcontrollers[i].controller_ip, strlen(pofcontrollers[i].controller_ip));
+    POF_DEBUG_CPRINT_FL(1,GREEN,">>the new controller ip is: %s\n",pofsc_conn_desc[i].controller_ip);
+    pofsc_conn_desc[i].controller_port = pofcontrollers[i].port;
+    pofsc_conn_desc[i].conn_retry_max = retry_max;
+    pofsc_conn_desc[i].conn_retry_interval = retry_interval;
+    pofsc_conn_desc[i].conn_status.echo_interval = pofsc_echo_interval;
+    pofsc_conn_desc[i].role = 3;
+    }
 
     return POF_OK;
 }
@@ -796,15 +834,15 @@ static uint32_t pofsc_create_socket(int *socket_fd_ptr){
  * Discribe: This function connect the Soft Switch with the Conteroller
  *           by using the socket_fd
  ***********************************************************************/
-static uint32_t pofsc_connect(int socket_fd, char *server_ip, uint16_t port, struct pof_datapath *dp){
-	pofsc_dev_conn_desc *conn_desc_ptr = (pofsc_dev_conn_desc *)&pofsc_conn_desc;//add by wenjian 2015/12/02
+static uint32_t pofsc_connect(int socket_fd, char *server_ip, uint16_t port, struct pof_datapath *dp,int i){
+	pofsc_dev_conn_desc *conn_desc_ptr = (pofsc_dev_conn_desc *)&pofsc_conn_desc[i];//add by wenjian 2015/12/02
     socklen_t sockaddr_len = sizeof(struct sockaddr_in);
     struct sockaddr_in serverAddr, localAddr;
     char localIP[POF_IP_ADDRESS_STRING_LEN] = "\0";
     uint8_t hwaddr[POF_ETH_ALEN] = {0};
 	uint8_t port_id;
 
-	uint8_t local_port_index;
+
 	int ifindex;
     struct pof_local_resource *lr, *lrNext;
 
@@ -864,7 +902,7 @@ static uint32_t pofsc_connect(int socket_fd, char *server_ip, uint16_t port, str
  * Return:   POF_OK or ERROR code
  * Discribe: This function receive the messages from the Controller.
  ***********************************************************************/
-static uint32_t pofsc_recv(int socket_fd, char* buf, int buflen, int* plen, struct pof_datapath *dp){
+static uint32_t pofsc_recv(int socket_fd, char* buf, int buflen, int* plen, struct pof_datapath *dp,int i){
     pof_header *header_ptr;
     int len;
 
@@ -874,14 +912,15 @@ static uint32_t pofsc_recv(int socket_fd, char* buf, int buflen, int* plen, stru
     }
 
     if ((len = read(socket_fd, buf, buflen)) <= 0){
+
         POF_ERROR_CPRINT_FL("closed socket fd!");
         close(socket_fd);
-        pofsc_performance_after_ctrl_disconn(dp);
+        pofsc_performance_after_ctrl_disconn(dp,i);
         return (POF_RECEIVE_MSG_FAILURE);
     }
     *plen = len;
 
-    if(pofsc_conn_desc.conn_status.state == POFCS_CHANNEL_RUN){
+    if(pofsc_conn_desc[i].conn_status.state == POFCS_CHANNEL_RUN){
         return POF_OK;
     }
 
@@ -906,7 +945,7 @@ static uint32_t pofsc_recv(int socket_fd, char* buf, int buflen, int* plen, stru
  * Return:   POF_OK or ERROR code
  * Discribe: This function send messages to the Controller in send task.
  ***********************************************************************/
-static uint32_t pofsc_send(int socket_fd, char* buf, int len, struct pof_datapath *dp){
+static uint32_t pofsc_send(int socket_fd, char* buf, int len, struct pof_datapath *dp,int i){
     int ret;
 #ifndef POF_DEBUG_PRINT_ECHO_ON
     pof_header *header_ptr = (pof_header *)buf;
@@ -921,7 +960,7 @@ static uint32_t pofsc_send(int socket_fd, char* buf, int len, struct pof_datapat
     if ((ret = write(socket_fd, (char *)buf, len) == -1)){
         POF_ERROR_CPRINT_FL("Socket write ERROR!");
         close(socket_fd);
-        pofsc_performance_after_ctrl_disconn(dp);
+        pofsc_performance_after_ctrl_disconn(dp,i);
         return (POF_SEND_MSG_FAILURE);
     }
 
@@ -939,10 +978,10 @@ static uint32_t pofsc_send(int socket_fd, char* buf, int len, struct pof_datapat
  *           receive a message from the Controller during the
  *           POFCS_CHANNEL_RUN state.
  ***********************************************************************/
-static uint32_t pofsc_run_process(char *message, uint16_t len, struct pof_datapath *dp){
+static uint32_t pofsc_run_process(int i,char *message, uint16_t len, struct pof_datapath *dp){
     uint32_t ret = POF_OK;
     pof_header *head_ptr;
-    pofsc_dev_conn_desc *conn_desc_ptr = (pofsc_dev_conn_desc *)&pofsc_conn_desc;
+    pofsc_dev_conn_desc *conn_desc_ptr = (pofsc_dev_conn_desc *)&pofsc_conn_desc[i];
 
     head_ptr = (pof_header *)message;
     if(POF_NTOHS(head_ptr->length)!= len){
@@ -956,7 +995,7 @@ static uint32_t pofsc_run_process(char *message, uint16_t len, struct pof_datapa
         conn_desc_ptr->last_echo_time = time(NULL);
     }else{
         /* Forward to LPU board through IPC channel. */
-        ret = pof_parse_msg_from_controller(message, dp);
+        ret = pof_parse_msg_from_controller(message, dp,i);
 		POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
     }
 
@@ -1036,7 +1075,7 @@ static uint32_t pofsc_build_error_msg(char *message, uint16_t *len_p){
 
 /* Send packet upward to the Contrller through OpenFlow channel. */
 uint32_t pofsc_send_packet_upward(uint8_t *packet, uint32_t len){
-    if(POF_OK != pofbf_queue_write(pofsc_send_q_id, packet, len, POF_WAIT_FOREVER)){
+    if(POF_OK != pofbf_queue_write(send_q_id, packet, len, POF_WAIT_FOREVER)){
         POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE);
     }
 
@@ -1045,15 +1084,42 @@ uint32_t pofsc_send_packet_upward(uint8_t *packet, uint32_t len){
 
 /* Set the Controller's IP address. */
 uint32_t pofsc_set_controller_ip(char *ip_str){
-	strncpy(pofsc_controller_ip_addr, ip_str, POF_IP_ADDRESS_STRING_LEN);
-	strncpy(g_states.ctrl_ip.cont, ip_str, POF_IP_ADDRESS_STRING_LEN);
+	char c[]=",";
+	int i=0;
+	char *r=NULL;
+	r=strtok(ip_str,c);
+    if (r!=NULL)
+        {strncpy(pofcontrollers[i].controller_ip,r,POF_IP_ADDRESS_STRING_LEN);
+	    while ((r=strtok(NULL,c))){
+	    i=i+1;
+        strncpy(pofcontrollers[i].controller_ip,r,POF_IP_ADDRESS_STRING_LEN);
+	    }
+	    n_controller=i+1;
+        }
 	return POF_OK;
 }
 
+
+
+	//strncpy(pofsc_controller_ip_addr, ip_str, POF_IP_ADDRESS_STRING_LEN);
+	//strncpy(g_states.ctrl_ip.cont, ip_str, POF_IP_ADDRESS_STRING_LEN);
+
+
+
 /* Set the Controller's port. */
-uint32_t pofsc_set_controller_port(uint16_t port){
-	pofsc_controller_port = port;
-    sprintf(g_states.conn_port.cont, "%u", port);
+uint32_t pofsc_set_controller_port(char *port){
+	char c[]=",";
+    char *r=strtok(port,c);
+    int i=0;
+    if (r !=NULL){
+       pofcontrollers[i].port=atoi(r);
+       while ((r=strtok(NULL,c))){
+    	  i=i+1;
+	      pofcontrollers[i].port=atoi(r);
+          }
+    }
+	//pofsc_controller_port = port;
+    //sprintf(g_states.conn_port.cont, "%u", port);
 	return POF_OK;
 }
 
@@ -1078,34 +1144,37 @@ uint32_t pofsc_check_root(){
  *           in Soft Switch in order to reclaim the resource.
  ***********************************************************************/
 static uint32_t pofsc_destroy(struct pof_datapath *dp){
-    uint32_t i;
+    int i;
 	uint16_t port_number = 0;
     struct pof_local_resource *lr, *lrNext;
 
     /* Free task,timer and queue. */
-    if(pofsc_main_task_id != POF_INVALID_TASKID){
-        pofbf_task_delete(&pofsc_main_task_id);
+    for (i=0;i<n_controller;i++){
+    if(pofsc_main_task_id[i] != POF_INVALID_TASKID){
+        pofbf_task_delete(&pofsc_main_task_id[i]);
     }
 
-    if(pofsc_send_task_id != POF_INVALID_TASKID){
-        pofbf_task_delete(&pofsc_send_task_id);
+    if(pofsc_send_task_id[i] != POF_INVALID_TASKID){
+        pofbf_task_delete(&pofsc_send_task_id[i]);
     }
-
+    if(pofsc_echo_timer_id[i] != POF_INVALID_TIMERID){
+           pofbf_timer_delete(&pofsc_echo_timer_id[i]);
+       }
+    if(pofsc_send_q_id[i] != POF_INVALID_QUEUEID){
+           pofbf_queue_delete(&pofsc_send_q_id[i]);
+       }
+    }
     if(pofsc_listen_task_id != POF_INVALID_TASKID){
         pofbf_task_delete(&pofsc_listen_task_id);
     }
 
-    if(pofsc_echo_timer_id != POF_INVALID_TIMERID){
-        pofbf_timer_delete(&pofsc_echo_timer_id);
-    }
+
 
     HMAP_NODES_IN_STRUCT_TRAVERSE(lr, lrNext, slotNode, dp->slotMap){
         poflr_ports_task_delete(lr);
     }
 
-    if(pofsc_send_q_id != POF_INVALID_QUEUEID){
-        pofbf_queue_delete(&pofsc_send_q_id);
-    }
+
 
 	pof_close_log_file();
 
@@ -1156,12 +1225,14 @@ void terminate_handler(){
     exit(0);
 }
 
-static uint32_t pofsc_performance_after_ctrl_disconn(struct pof_datapath *dp){
+static uint32_t pofsc_performance_after_ctrl_disconn(struct pof_datapath *dp,int i){
     struct pof_local_resource *lr, *lrNext;
 #if (POF_PERFORM_AFTER_CTRL_DISCONN == POF_AFTER_CTRL_DISCONN_SHUT_DOWN)
     terminate_handler();
 #elif (POF_PERFORM_AFTER_CTRL_DISCONN == POF_AFTER_CTRL_DISCONN_RECONN)
-    pofsc_conn_desc.conn_status.state = POFCS_CHANNEL_INVALID;
+    pofsc_conn_desc[i].conn_status.state = POFCS_CHANNEL_INVALID;
+    if (pofsc_conn_desc[i].role==2){ master_controller = -1;}
+    pofsc_conn_desc[i].role = 3;
 	if(pof_auto_clear()){
         HMAP_NODES_IN_STRUCT_TRAVERSE(lr, lrNext, slotNode, dp->slotMap){
 		    poflr_clear_resource(lr);

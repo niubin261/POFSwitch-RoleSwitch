@@ -42,7 +42,7 @@ movePacketBufOffset(int16_t offset, struct pofdp_packet *dpp)
     /* Check offset. */
 	if((offset > dpp->left_len) || \
             (offset < (0 - (int32_t)(POFDP_PACKET_PREBUF_LEN + dpp->offset)))){
-		POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR, g_upward_xid++);
+		POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR);
 	}
     dpp->offset     += offset;
     dpp->left_len   -= offset;
@@ -77,14 +77,14 @@ insJump(uint8_t direction, uint32_t insNum, struct pofdp_packet *dpp)
 		if(insNum > dpp->ins_todo_num){
 			POF_DEBUG_CPRINT_FL(1,RED,"The number of instruction to jump forward is more than the instructions left. " \
 					"insNum = %u, insLeft=%u", insNum, dpp->ins_todo_num);
-			POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_INSTRUCTION,POFBIC_JUM_TO_INVALID_INST,g_upward_xid++);
+			POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_INSTRUCTION,POFBIC_JUM_TO_INVALID_INST);
 		}
         insJumpForward(insNum, dpp);
 	}else{
 		if(insNum > dpp->ins_done_num){
 			POF_DEBUG_CPRINT_FL(1,RED,"The number of instruction to jump backward is more than the instructions reserved. " \
 					"insNum = %u, insDone = %u", insNum, dpp->ins_done_num);
-			POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_INSTRUCTION,POFBIC_JUM_TO_INVALID_INST,g_upward_xid++);
+			POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_INSTRUCTION,POFBIC_JUM_TO_INVALID_INST);
 		}
 #ifdef POF_SHT_VXLAN
         insNum = dpp->ins_done_num - insNum;
@@ -109,7 +109,7 @@ pofdp_get_field_buf(const struct pof_match *pm, const struct pofdp_packet *dpp)
 	if(pm->field_id == POFDP_METADATA_FIELD_ID){
         /* From metadata. */
 		if(pm->len + pm->offset > dpp->metadata_len * POF_BITNUM_IN_BYTE){
-			POF_ERROR_HANDLE_NO_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_METADATA_LEN_ERROR, g_upward_xid);
+			POF_ERROR_HANDLE_NO_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_METADATA_LEN_ERROR);
             return NULL;
 		}
 		buf = (uint8_t *)dpp->metadata;
@@ -117,7 +117,7 @@ pofdp_get_field_buf(const struct pof_match *pm, const struct pofdp_packet *dpp)
     }else if((pm->field_id & 0xF000) == POFDP_PARA_FIELD_ID){
         /* From parameter data. */
 		if(pm->len + pm->offset > dpp->paraLen){
-			POF_ERROR_HANDLE_NO_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_PARA_LEN_ERROR, g_upward_xid);
+			POF_ERROR_HANDLE_NO_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_PARA_LEN_ERROR);
             return NULL;
 		}
 		buf = (uint8_t *)dpp->para;
@@ -125,7 +125,7 @@ pofdp_get_field_buf(const struct pof_match *pm, const struct pofdp_packet *dpp)
 	}else{
         /* From packet data. */
 		if(pm->len + pm->offset > dpp->left_len * POF_BITNUM_IN_BYTE){
-			POF_ERROR_HANDLE_NO_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR, g_upward_xid);
+			POF_ERROR_HANDLE_NO_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR);
             return NULL;
 		}
 		buf = dpp->buf_offset;
@@ -231,7 +231,7 @@ static uint32_t execute_METER(POFDP_ARG)
 
     /* Check the meter id. */
     if(!(meter = poflr_get_meter_with_ID(meterID, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_UNKNOWN_METER, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_UNKNOWN_METER);
     }
 
 	dpp->rate = meter->rate;
@@ -391,7 +391,7 @@ static uint32_t execute_WRITE_METADATA_FROM_PACKET(POFDP_ARG)
     memset(value, 0, sizeof value);
 
     if(dpp->left_len * POF_BITNUM_IN_BYTE < p->len + p->packet_offset){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR);
     }
 
     pofbf_copy_bit(dpp->buf_offset, value, p->packet_offset, p->len);
@@ -432,18 +432,18 @@ static uint32_t execute_GOTO_DIRECT_TABLE(POFDP_ARG)
 
     table = poflr_get_table_with_ID(p->next_table_id, lr);
     if(!(table)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_ACTION, POFBIC_BAD_TABLE_ID, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_ACTION, POFBIC_BAD_TABLE_ID);
     }
     POF_DEBUG_CPRINT_FL(1,BLUE,"Go to DT table[%d][%d][%d]!", *table_type, *table_id, entry_index);
 
     /* Check the table type. */
     if(*table_type != POF_LINEAR_TABLE){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_ACTION, POFBIC_BAD_TABLE_TYPE, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_ACTION, POFBIC_BAD_TABLE_TYPE);
     }
 
     /* Check whether the index have already existed. */
     if(!(dpp->flow_entry = poflr_entry_lookup_Linear(entry_index, table))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_ACTION, POFBIC_ENTRY_UNEXIST, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_ACTION, POFBIC_ENTRY_UNEXIST);
     }
 
     /* Increase the counter value. */
@@ -506,7 +506,7 @@ static uint32_t execute_GOTO_TABLE(POFDP_ARG)
     POF_DEBUG_CPRINT_FL(1,BLUE,"Go to table[%d][%d]!", *table_type, *table_id);
 
     if(!(table = poflr_get_table_with_ID(p->next_table_id, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_ACTION, POFBIC_BAD_TABLE_ID, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_ACTION, POFBIC_BAD_TABLE_ID);
     }
 
     if(!(dpp->flow_entry = poflr_entry_lookup(dpp->buf_offset, (uint8_t *)dpp->metadata, table))){
@@ -593,18 +593,18 @@ pofdp_write_32value_to_field(uint32_t value, const struct pof_match *pm, \
 	uint8_t *dst;
 
 	if(pm->len > 32){
-		POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_MATCH, POFBMC_BAD_LEN, g_upward_xid++);
+		POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_MATCH, POFBMC_BAD_LEN);
 	}
 
 	/* Copy data from packet/metadata to value. */
 	if(pm->field_id != POFDP_METADATA_FIELD_ID){
 		if(pm->len + pm->offset > dpp->left_len * POF_BITNUM_IN_BYTE){
-			POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR, g_upward_xid++);
+			POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR);
 		}
 		dst = dpp->buf_offset;
 	}else{
 		if(pm->len + pm->offset > dpp->metadata_len * POF_BITNUM_IN_BYTE){
-			POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_METADATA_LEN_ERROR, g_upward_xid++);
+			POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_METADATA_LEN_ERROR);
 		}
 		dst = (uint8_t *)dpp->metadata;
 	}
@@ -649,7 +649,7 @@ get_32value_from_field(uint32_t *value, const struct pof_match *pm, \
 {
 	uint8_t *src;
 	if(pm->len > 32){
-		POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_MATCH, POFBMC_BAD_LEN, g_upward_xid);
+		POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_MATCH, POFBMC_BAD_LEN);
 	}
 
     /* Get the buf according to the match field id. */
@@ -668,7 +668,7 @@ get_16value_from_field(uint16_t *value, const struct pof_match *pm, \
 {
 	uint8_t *src;
 	if(pm->len > 16){
-		POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_MATCH, POFBMC_BAD_LEN, g_upward_xid);
+		POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_MATCH, POFBMC_BAD_LEN);
 	}
 
     /* Get the buf according to the match field id. */
@@ -694,7 +694,7 @@ pofdp_get_value_byte_match(uint8_t *value,                  \
     
     /* Check the length. */
     if((len_b != 0) && (len_b != field.len)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_FIELD_LEN_ERROR, g_upward_xid ++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_FIELD_LEN_ERROR);
     }
 
     /* Get the buf according to the match field id. */
@@ -877,7 +877,7 @@ execute_CALCULATE_FIELD(POFDP_ARG)
 		CALCULATIONS
 #undef CALCULATION
 		default:
-			POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_INSTRUCTION, POFBIC_UNKNOWN_INST, g_upward_xid++);
+			POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_INSTRUCTION, POFBIC_UNKNOWN_INST);
 			break;
 	}
 
@@ -921,21 +921,21 @@ static uint32_t
 execute_WRITE_ACTIONS(POFDP_ARG)
 {
 	// TODO
-    POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_INSTRUCTION, POFBIC_UNSUP_INST, g_upward_xid++);
+    POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_INSTRUCTION, POFBIC_UNSUP_INST);
 }
 
 static uint32_t 
 execute_CLEAR_ACTIONS(POFDP_ARG)
 {
 	// TODO
-    POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_INSTRUCTION, POFBIC_UNSUP_INST, g_upward_xid++);
+    POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_INSTRUCTION, POFBIC_UNSUP_INST);
 }
 
 static uint32_t 
 execute_EXPERIMENTER(POFDP_ARG)
 {
 	// TODO
-    POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_INSTRUCTION, POFBIC_UNSUP_INST, g_upward_xid++);
+    POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_INSTRUCTION, POFBIC_UNSUP_INST);
 }
 
 /***********************************************************************
@@ -957,7 +957,7 @@ uint32_t pofdp_instruction_execute(POFDP_ARG)
 			INSTRUCTIONS
 #undef INSTRUCTION
             default:
-                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_INSTRUCTION, POFBIC_UNKNOWN_INST, g_upward_xid++);
+                POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_INSTRUCTION, POFBIC_UNKNOWN_INST);
 				break;
         }
         POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);

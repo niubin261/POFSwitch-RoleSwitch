@@ -726,6 +726,14 @@ typedef struct pof_flow_table{
 	pof_match match[POF_MAX_MATCH_FIELD_NUM];
 }pof_flow_table;        //size = 16 + 64 + 8*8 = 144
 
+typedef struct pof_role_request{
+    uint8_t role;
+}pof_role_request;
+
+typedef struct pof_role_reply{
+	uint8_t role;
+}pof_role_reply;
+
 /* Discribe the flow entry struct. */
 #ifdef POF_SHT_VXLAN
 typedef struct pof_flow_entry{
@@ -1683,10 +1691,10 @@ extern pofec_error g_pofec_error;
 	POF_ERROR_CPRINT_FL("[ERROR:] type = %s(%d), code = %s(0x%.4x)", g_pofec_error.type_str, \
 	g_pofec_error.type, g_pofec_error.error_str, g_pofec_error.code)
 
-#define POF_ERROR_HANDLE_RETURN_UPWARD(type,code,xid) \
+#define POF_ERROR_HANDLE_RETURN_UPWARD(type,code,xid,controller) \
     pofec_set_error(type,#type,code,#code); \
 	POF_DEBUG_CPRINT_ERR(); \
-    pofec_reply_error(type,code,#code,xid); \
+    pofec_reply_error(type,code,#code,xid,controller); \
     return code | 0xF0000000
 
 #define POF_ERROR_HANDLE_RETURN_NO_UPWARD(type,code) \
@@ -1694,10 +1702,10 @@ extern pofec_error g_pofec_error;
 	POF_DEBUG_CPRINT_ERR(); \
     return code | 0xF0000000
 
-#define POF_ERROR_HANDLE_NO_RETURN_UPWARD(type,code,xid) \
+#define POF_ERROR_HANDLE_NO_RETURN_UPWARD(type,code,xid,index,controller) \
     pofec_set_error(type,#type,code,#code); \
 	POF_DEBUG_CPRINT_ERR(); \
-    pofec_reply_error(type,code,#code,xid)
+    pofec_reply_error(type,code,#code,xid,index,controller)
 
 #define POF_ERROR_HANDLE_NO_RETURN_NO_UPWARD(type,code) \
     pofec_set_error(type,#type,code,#code); \
@@ -1708,9 +1716,9 @@ extern pofec_error g_pofec_error;
 	POF_DEBUG_CPRINT_ERR(); \
     terminate_handler()
 
-#define POF_MALLOC_ERROR_HANDLE_RETURN_UPWARD(ptr,xid) \
+#define POF_MALLOC_ERROR_HANDLE_RETURN_UPWARD(ptr,xid,controller) \
     if((ptr) == NULL){ \
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_ALLOCATE_RESOURCE_FAILURE,xid); \
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_ALLOCATE_RESOURCE_FAILURE,xid,controller); \
     }
 
 #define POF_MALLOC_ERROR_HANDLE_RETURN_NO_UPWARD(ptr) \
@@ -1755,7 +1763,7 @@ typedef void (*POF_TIMER_FUNC)(uint32_t timerid, int arg);
 extern uint32_t pofbf_task_create(void *arg, POF_TASK_FUNC task_func, task_t *task_id_ptr0);
 extern uint32_t pofbf_task_delay(uint32_t delay);
 extern uint32_t pofbf_task_delete(task_t *task_id_ptr);
-extern uint32_t pofbf_queue_create(uint32_t *queue_id_ptr);
+extern uint32_t pofbf_queue_create(uint32_t *queue_id_ptr,int j);
 extern uint32_t pofbf_queue_delete( uint32_t *queue_id_ptr );
 extern uint32_t pofbf_queue_read( uint32_t queue_id, void *buf, uint32_t max_len, int timeout);
 extern uint32_t pofbf_queue_write( uint32_t queue_id, const void *message, uint32_t msg_len, int timeout);

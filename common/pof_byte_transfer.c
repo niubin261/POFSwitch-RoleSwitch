@@ -869,3 +869,15 @@ uint32_t pof_NtoH_transfer_group(void *ptr){
 
     return POF_OK;
 }
+
+uint32_t pof_NtoH_transfer_role(void *ptr){
+	pof_role_request *p = (pof_role_request *)ptr;
+	POF_NTOHL_FUNC(p->role);
+    return POF_OK;
+}
+uint32_t pof_HtoN_transfer_role(void *ptr){
+	pof_role_request *p = (pof_role_request *)ptr;
+	POF_HTONL_FUNC(p->role);
+    return POF_OK;
+}
+

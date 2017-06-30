@@ -84,15 +84,15 @@ poflr_add_meter_entry(uint32_t meter_id, uint32_t rate, struct pof_local_resourc
     
     /* Check meter_id. */
     if(meter_id >= lr->meterNumMax){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_INVALID_METER, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_INVALID_METER);
     }
     if(poflr_get_meter_with_ID(meter_id, lr)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_METER_EXISTS, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_METER_EXISTS);
     }
 
     /* Create meter and insert to the local resource. */
     meter = map_meterCreate();
-    POF_MALLOC_ERROR_HANDLE_RETURN_UPWARD(meter, g_upward_xid++);
+    //POF_MALLOC_ERROR_HANDLE_RETURN_NO_UPWARD();
     meter->id = meter_id;
     meter->rate = rate;
     meter->idNode.hash = map_meterHashByID(meter_id);
@@ -117,11 +117,11 @@ poflr_modify_meter_entry(uint32_t meter_id, uint32_t rate, struct pof_local_reso
 
     /* Check meter_id. */
     if(meter_id >= lr->meterNumMax){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_INVALID_METER, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_INVALID_METER);
     }
     /* Get the meter. */
     if(!(meter = poflr_get_meter_with_ID(meter_id, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_UNKNOWN_METER, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_UNKNOWN_METER);
     }
     /* Modify the rate. */
     meter->rate = rate;
@@ -145,11 +145,11 @@ poflr_delete_meter_entry(uint32_t meter_id, uint32_t rate, struct pof_local_reso
 
     /* Check meter_id. */
     if(meter_id >= lr->meterNumMax){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_INVALID_METER, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_INVALID_METER);
     }
     /* Get the meter. */
     if(!(meter = poflr_get_meter_with_ID(meter_id, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_UNKNOWN_METER, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_UNKNOWN_METER);
     }
 
     /* Delete the meter from local resource, and free the memory. */
@@ -194,7 +194,7 @@ poflr_get_meter_with_ID(uint32_t id, const struct pof_local_resource *lr)
 }
 
 static uint32_t
-reply(const struct meterInfo * meter, const struct pof_local_resource *lr)
+reply(const struct meterInfo * meter, const struct pof_local_resource *lr,int controller)
 {
     struct pof_meter pofMeter = {0};
 
@@ -206,33 +206,33 @@ reply(const struct meterInfo * meter, const struct pof_local_resource *lr)
     pofMeter.rate = meter->rate;
     pof_NtoH_transfer_meter(&pofMeter);
 
-    if(POF_OK != pofec_reply_msg(POFT_METER_MOD, g_recv_xid, sizeof(pof_meter), (uint8_t *)&pofMeter)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+    if(POF_OK != pofec_reply_msg(controller,POFT_METER_MOD, g_recv_xid, sizeof(pof_meter), (uint8_t *)&pofMeter)){
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE);
     }
     return POF_OK;
 }
 
 uint32_t
-poflr_reply_meter(const struct pof_local_resource *lr, uint32_t meterID)
+poflr_reply_meter(const struct pof_local_resource *lr, uint32_t meterID,int controller)
 {
     struct meterInfo *meter;
     uint32_t ret;
     if((meter = poflr_get_meter_with_ID(meterID, lr)) == NULL){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_UNKNOWN_METER, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_UNKNOWN_METER);
     }
-    ret = reply(meter, lr);
+    ret = reply(meter, lr,controller);
     POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 
     return POF_OK;
 }
 
 uint32_t
-poflr_reply_meter_all(const struct pof_local_resource *lr)
+poflr_reply_meter_all(const struct pof_local_resource *lr,int controller)
 {
     uint32_t ret;
     struct meterInfo *meter, *next;
     HMAP_NODES_IN_STRUCT_TRAVERSE(meter, next, idNode, lr->meterMap){
-        ret = reply(meter, lr);
+        ret = reply(meter, lr,controller);
         POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
     }
     return POF_OK;

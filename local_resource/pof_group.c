@@ -99,10 +99,10 @@ poflr_add_group_entry(pof_group *group_ptr, struct pof_local_resource *lr)
 
     /* Check group_id. */
     if(group_ptr->group_id >= lr->groupNumMax){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_INVALID_GROUP, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_INVALID_GROUP);
     }
     if(poflr_get_group_with_ID(group_ptr->group_id, lr)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_GROUP_EXISTS, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_GROUP_EXISTS);
     }
 
     /* Initialize the counter_id. */
@@ -111,7 +111,7 @@ poflr_add_group_entry(pof_group *group_ptr, struct pof_local_resource *lr)
 
     /* Create group and insert to the local resource. */
     group = map_groupCreate();
-    POF_MALLOC_ERROR_HANDLE_RETURN_UPWARD(group, g_upward_xid++);
+    //POF_MALLOC_ERROR_HANDLE_RETURN_UPWARD(group, g_upward_xid++);
     groupFill(group_ptr, group);
     map_groupInsert(group, lr);
 
@@ -135,16 +135,16 @@ poflr_modify_group_entry(pof_group *group_ptr, struct pof_local_resource *lr)
 
     /* Check group_id. */
     if(group_ptr->group_id >= lr->groupNumMax){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_INVALID_GROUP, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_INVALID_GROUP);
     }
     /* Get the group. */
     if(!(group = poflr_get_group_with_ID(group_ptr->group_id, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_UNKNOWN_GROUP, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_UNKNOWN_GROUP);
     }
 
     /* Check the counter_id. */
     if(group_ptr->counter_id != group->counter_id){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_BAD_COUNTER_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_BAD_COUNTER_ID);
     }
 
     /* Modify the information of group. */
@@ -171,11 +171,11 @@ poflr_delete_group_entry(pof_group *group_ptr, struct pof_local_resource *lr)
 
     /* Check group_id. */
     if(group_ptr->group_id >= lr->groupNumMax){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_INVALID_GROUP, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_INVALID_GROUP);
     }
     /* Get the group. */
     if(!(group = poflr_get_group_with_ID(group_ptr->group_id, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_UNKNOWN_GROUP, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_UNKNOWN_GROUP);
     }
 
     /* Delete the counter_id. */
@@ -224,7 +224,7 @@ poflr_get_group_with_ID(uint32_t id, const struct pof_local_resource *lr)
 }
 
 static uint32_t
-reply(const struct groupInfo * group, const struct pof_local_resource *lr)
+reply(const struct groupInfo * group, const struct pof_local_resource *lr,int controller)
 {
     struct pof_group pofGroup = {0};
 
@@ -237,33 +237,33 @@ reply(const struct groupInfo * group, const struct pof_local_resource *lr)
     memcpy(pofGroup.action, group->action, POF_MAX_ACTION_NUMBER_PER_GROUP * sizeof(struct pof_action));
     pof_NtoH_transfer_group(&pofGroup);
 
-    if(POF_OK != pofec_reply_msg(POFT_GROUP_MOD, g_recv_xid, sizeof(pof_group), (uint8_t *)&pofGroup)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+    if(POF_OK != pofec_reply_msg(controller,POFT_GROUP_MOD, g_recv_xid, sizeof(pof_group), (uint8_t *)&pofGroup)){
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE);
     }
     return POF_OK;
 }
 
 uint32_t
-poflr_reply_group(const struct pof_local_resource *lr, uint32_t groupID)
+poflr_reply_group(const struct pof_local_resource *lr, uint32_t groupID,int controller)
 {
     struct groupInfo *group;
     uint32_t ret;
     if((group = poflr_get_group_with_ID(groupID, lr)) == NULL){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_METER_MOD_FAILED, POFGMFC_UNKNOWN_GROUP, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_METER_MOD_FAILED, POFGMFC_UNKNOWN_GROUP);
     }
-    ret = reply(group, lr);
+    ret = reply(group, lr,controller);
     POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 
     return POF_OK;
 }
 
 uint32_t
-poflr_reply_group_all(const struct pof_local_resource *lr)
+poflr_reply_group_all(const struct pof_local_resource *lr,int controller)
 {
     uint32_t ret;
     struct groupInfo *group, *next;
     HMAP_NODES_IN_STRUCT_TRAVERSE(group, next, idNode, lr->groupMap){
-        ret = reply(group, lr);
+        ret = reply(group, lr,controller);
         POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
     }
     return POF_OK;

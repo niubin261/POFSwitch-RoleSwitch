@@ -53,6 +53,7 @@ static key_t pofbf_key = 0;
  *           with the arguments.
  ***********************************************************************/
 uint32_t pofbf_task_create(void *arg, POF_TASK_FUNC task_func, task_t *task_id_ptr){
+
     if(NULL == task_func || NULL == task_id_ptr){
         POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_TASK_CREATE_FAIL);
     }
@@ -120,9 +121,9 @@ uint32_t pofbf_task_delete(task_t *task_id_ptr){
  * Return:   POF_OK or Error code
  * Discribe: This function creates a new message queue.
  ***********************************************************************/
-uint32_t pofbf_queue_create(uint32_t *queue_id_ptr){
+uint32_t pofbf_queue_create(uint32_t *queue_id_ptr,int j){
     uint32_t queue_id = POF_INVALID_QUEUEID;
-    int i = (int)g_poflr_dev_id;
+    //int i = (int)g_poflr_dev_id;
 
     if(queue_id_ptr == NULL){
         POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_QUEUE_CREATE_FAIL);
@@ -130,7 +131,7 @@ uint32_t pofbf_queue_create(uint32_t *queue_id_ptr){
 
     /* Build the pofbf_key to create the queue. */
     if(pofbf_key == 0){
-        pofbf_key = ftok(".", i);
+        pofbf_key = ftok(".", j+1);
     }
 
     /* Create the queue using pofbf_key. */
@@ -141,6 +142,7 @@ uint32_t pofbf_queue_create(uint32_t *queue_id_ptr){
 
     pofbf_key ++;
     *queue_id_ptr = queue_id;
+    POF_DEBUG_CPRINT_FL(1,GREEN,">>the queue id is %d",queue_id);
     return POF_OK;
 }
 

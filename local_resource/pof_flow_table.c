@@ -128,7 +128,7 @@ valueMaskAssemble(const struct pof_match_x *match, uint8_t match_field_num, \
 
     /* Check the match length in bit. */
     if(offset_b != keyLen){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_KEY_LEN, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_KEY_LEN);
     }
     return POF_OK;
 }
@@ -436,7 +436,8 @@ poflr_entry_get_with_index(uint32_t index, const struct tableInfo *table)
 }
 
 uint32_t 
-poflr_create_flow_table(uint8_t id,              \
+poflr_create_flow_table(int controller,          \
+		                uint8_t id,              \
                         uint8_t type,            \
                         uint16_t key_len,        \
                         uint32_t size,           \
@@ -450,34 +451,34 @@ poflr_create_flow_table(uint8_t id,              \
 
     /* Check type. */
     if(type >= POF_MAX_TABLE_TYPE){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_TYPE, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_TYPE, g_recv_xid,controller);
     }
 
     /* Check table_id. */
     if(id >= lr->tableNumMaxEachType[type]){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_ID, g_recv_xid,controller);
     }
 
     poflr_table_id_to_ID(type, id, &ID, lr);
 
     /* Check whether the table have already existed. */
     if(poflr_get_table_with_ID(ID, lr)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_TABLE_EXIST, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_TABLE_EXIST, g_recv_xid,controller);
     }
 
     /* Check table_size. */
     if(size > lr->tableSizeMax){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_SIZE, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_SIZE, g_recv_xid,controller);
     }
 
     /* Check table_key_length. */
     if(key_len > poflr_key_len_each_type[type]){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_KEY_LEN, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_KEY_LEN, g_recv_xid,controller);
     }
 
     /* Malloc memory for table. */
     table = map_tableCreate();
-    POF_MALLOC_ERROR_HANDLE_RETURN_UPWARD(table, g_upward_xid++);
+    POF_MALLOC_ERROR_HANDLE_RETURN_UPWARD(table, g_upward_xid++,controller);
     /* Fill the table information. */
     table->id = ID;
     table->idNode.hash = map_tableHashByID(ID);
@@ -502,31 +503,31 @@ poflr_create_flow_table(uint8_t id,              \
 }
 
 uint32_t
-poflr_delete_flow_table(uint8_t id, uint8_t type, struct pof_local_resource *lr)
+poflr_delete_flow_table(int controller, uint8_t id, uint8_t type, struct pof_local_resource *lr)
 {
     struct tableInfo *table;
     uint8_t ID;
 
     /* Check type. */
     if(type >= POF_MAX_TABLE_TYPE){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_TYPE, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_TYPE, g_recv_xid,controller);
     }
 
     /* Check table_id. */
     if(id >= lr->tableNumMaxEachType[type]){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_ID, g_recv_xid,controller);
     }
 
     poflr_table_id_to_ID(type, id, &ID, lr);
 
     /* Get the table. */
     if(!(table = poflr_get_table_with_ID(ID, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_TABLE_UNEXIST, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_TABLE_UNEXIST, g_recv_xid,controller);
     }
 
     /* Check whether the table is empty. */
     if(table->entryNum){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_TABLE_UNEMPTY, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_TABLE_UNEMPTY, g_recv_xid,controller);
     }
 
     /* FREE the hash map of the entry in the table. */
@@ -552,7 +553,7 @@ poflr_delete_flow_table(uint8_t id, uint8_t type, struct pof_local_resource *lr)
  * Discribe: This function will add a new flow entry in the table. If a
  *           same flow entry is already exist in this table, ERROR.
  ***********************************************************************/
-uint32_t poflr_add_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resource *lr){
+uint32_t poflr_add_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resource *lr,int controller){
     struct tableInfo *table;
     uint32_t index = flow_ptr->index, ret;
     uint8_t  table_id = flow_ptr->table_id;
@@ -566,28 +567,28 @@ uint32_t poflr_add_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resourc
 
     /* Check type. */
     if(table_type >= POF_MAX_TABLE_TYPE){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_TYPE, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_TYPE, g_recv_xid,controller);
     }
 
     /* Check table_id. */
     if(table_id >= lr->tableNumMaxEachType[table_type]){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_ID, g_recv_xid,controller);
     }
 
     poflr_table_id_to_ID(table_type, table_id, &ID, lr);
     /* Get the table. */
     if(!(table = poflr_get_table_with_ID(ID, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_ID, g_recv_xid,controller);
     }
 
     /* Check the index. */
     if(index >= table->size){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_ENTRY_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_ENTRY_ID, g_recv_xid,controller);
     }
 
     /* Create the entry, and insert to the table. */
     if(entryInsert(flow_ptr, table) != POF_OK){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_UNKNOWN, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_UNKNOWN, g_recv_xid,controller);
     }
 
     /* Initialize the counter_id. */
@@ -607,7 +608,7 @@ uint32_t poflr_add_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resourc
  * Return:   POF_OK or ERROR code
  * Discribe: This function will modify a flow entry.
  ***********************************************************************/
-uint32_t poflr_modify_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resource *lr){
+uint32_t poflr_modify_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resource *lr,int controller){
     struct tableInfo *table;
     struct entryInfo *entry;
     uint32_t index = flow_ptr->index, ret;
@@ -622,28 +623,28 @@ uint32_t poflr_modify_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_reso
 
     /* Check type. */
     if(table_type >= POF_MAX_TABLE_TYPE){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_TYPE, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_TYPE, g_recv_xid,controller);
     }
 
     /* Check table_id. */
     if(table_id >= lr->tableNumMaxEachType[table_type]){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_ID, g_recv_xid,controller);
     }
 
     poflr_table_id_to_ID(table_type, table_id, &ID, lr);
     /* Get the table.. */
     if(!(table = poflr_get_table_with_ID(ID, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_ID, g_recv_xid,controller);
     }
 
     /* Check index. */
     if( index >= table->size ){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_ENTRY_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_ENTRY_ID, g_recv_xid,controller);
     }
     
     /* Check whether the index have already existed. */
     if(!(entry = poflr_entry_get_with_index(index, table))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_ENTRY_UNEXIST, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_ENTRY_UNEXIST, g_recv_xid,controller);
     }
 
     /* Check the counter id in the flow entry. */
@@ -656,7 +657,7 @@ uint32_t poflr_modify_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_reso
     /* Delete the original entry, then insert a new one. */
     entryDelete(entry, table);
     if(entryInsert(flow_ptr, table) != POF_OK){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_UNKNOWN, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_UNKNOWN, g_recv_xid,controller);
     }
 
     POF_DEBUG_CPRINT_FL(1,GREEN,"Modify flow entry SUC!");
@@ -671,7 +672,7 @@ uint32_t poflr_modify_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_reso
  * Return:   POF_OK or ERROR code
  * Discribe: This function will delete a flow entry in the flow table.
  ***********************************************************************/
-uint32_t poflr_delete_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resource *lr){
+uint32_t poflr_delete_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resource *lr,int controller){
     struct entryInfo *entry, *next;
     struct tableInfo *table;
     uint32_t index = flow_ptr->index, ret;
@@ -686,28 +687,28 @@ uint32_t poflr_delete_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_reso
 
     /* Check type. */
     if(table_type >= POF_MAX_TABLE_TYPE){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_TYPE, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_TYPE, g_recv_xid,controller);
     }
 
     /* Check table_id. */
     if(table_id >= lr->tableNumMaxEachType[table_type]){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_ID, g_recv_xid,controller);
     }
 
     poflr_table_id_to_ID(table_type, table_id, &ID, lr);
     /* Get the table. */
     if(!(table = poflr_get_table_with_ID(ID, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_TABLE_ID, g_recv_xid,controller);
     }
 
     /* Check index. */
     if( index >= table->size ){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_ENTRY_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_ENTRY_ID, g_recv_xid,controller);
     }
 
     /* Check whether the index have already existed. */
     if(!(entry = poflr_entry_get_with_index(index, table))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_ENTRY_UNEXIST, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_ENTRY_UNEXIST, g_recv_xid,controller);
     }
 
     /* Delete the counter. */
@@ -818,7 +819,7 @@ poflr_table_ID_to_id(uint8_t ID,                    \
         }
     }
 
-    POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_BAD_TABLE_ID, g_upward_xid++);
+    POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_BAD_TABLE_ID);
 }
 
 /* Get key len. */
@@ -834,7 +835,7 @@ uint32_t poflr_set_key_len(uint32_t key_len){
 }
 
 static uint32_t
-reply_table(const struct tableInfo *table, const struct pof_local_resource *lr)
+reply_table(const struct tableInfo *table, const struct pof_local_resource *lr,int controller)
 {
     struct pof_flow_table pofTable = {0};
     
@@ -849,15 +850,15 @@ reply_table(const struct tableInfo *table, const struct pof_local_resource *lr)
     memcpy(pofTable.match, table->match, POF_MAX_MATCH_FIELD_NUM * sizeof(struct pof_match));
     pof_NtoH_transfer_flow_table(&pofTable);
 
-    if(POF_OK != pofec_reply_msg(POFT_TABLE_MOD, g_recv_xid, sizeof(pof_flow_table), (uint8_t *)&pofTable)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+    if(POF_OK != pofec_reply_msg(controller,POFT_TABLE_MOD, g_recv_xid, sizeof(pof_flow_table), (uint8_t *)&pofTable)){
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid,controller);
     }
     return POF_OK;
 }
 
 static uint32_t
 reply_entry(const struct entryInfo *entry, const struct tableInfo *table, \
-        const struct pof_local_resource *lr)
+        const struct pof_local_resource *lr,int controller)
 {
     struct pof_flow_entry *pofEntry = NULL;
     uint32_t size, ret;
@@ -892,16 +893,16 @@ reply_entry(const struct entryInfo *entry, const struct tableInfo *table, \
         POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
     }
 
-    if(POF_OK != pofec_reply_msg(POFT_FLOW_MOD, g_recv_xid, size, (uint8_t *)pofEntry)){
+    if(POF_OK != pofec_reply_msg(controller,POFT_FLOW_MOD, g_recv_xid, size, (uint8_t *)pofEntry)){
         FREE(pofEntry);
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid,controller);
     }
     FREE(pofEntry);
     return POF_OK;
 }
 
 uint32_t
-poflr_reply_table(const struct pof_local_resource *lr, uint8_t id, uint8_t type)
+poflr_reply_table(const struct pof_local_resource *lr, uint8_t id, uint8_t type,int controller)
 {
     struct tableInfo *table;
     uint32_t ret;
@@ -909,31 +910,31 @@ poflr_reply_table(const struct pof_local_resource *lr, uint8_t id, uint8_t type)
     
     /* Check type. */
     if(type >= POF_MAX_TABLE_TYPE){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_TYPE, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_TYPE, g_recv_xid,controller);
     }
     /* Check table_id. */
     if(id >= lr->tableNumMaxEachType[type]){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_ID, g_recv_xid,controller);
     }
     poflr_table_id_to_ID(type, id, &ID, lr);
 
     /* Check whether the table have already existed. */
     if((table = poflr_get_table_with_ID(ID, lr)) == NULL){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_TABLE_UNEXIST, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_TABLE_UNEXIST, g_recv_xid,controller);
     }
-    ret = reply_table(table, lr);
+    ret = reply_table(table, lr,controller);
     POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 
     return POF_OK;
 }
 
 uint32_t
-poflr_reply_table_all(const struct pof_local_resource *lr)
+poflr_reply_table_all(const struct pof_local_resource *lr,int controller)
 {
     uint32_t ret;
     struct tableInfo *table, *next;
     HMAP_NODES_IN_STRUCT_TRAVERSE(table, next, idNode, lr->tableIdMap){
-        ret = reply_table(table, lr);
+        ret = reply_table(table, lr,controller);
         POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
     }
     return POF_OK;
@@ -941,7 +942,7 @@ poflr_reply_table_all(const struct pof_local_resource *lr)
 
 uint32_t
 poflr_reply_entry(const struct pof_local_resource *lr, uint8_t table_id, \
-                  uint8_t table_type, uint32_t index)
+                  uint8_t table_type, uint32_t index,int controller)
 {
     struct tableInfo *table;
     struct entryInfo *entry;
@@ -950,41 +951,41 @@ poflr_reply_entry(const struct pof_local_resource *lr, uint8_t table_id, \
     
     /* Check type. */
     if(table_type >= POF_MAX_TABLE_TYPE){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_TYPE, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_TYPE, g_recv_xid,controller);
     }
     /* Check table_id. */
     if(table_id >= lr->tableNumMaxEachType[table_type]){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_TABLE_ID, g_recv_xid,controller);
     }
     poflr_table_id_to_ID(table_type, table_id, &ID, lr);
 
     /* Check whether the table have already existed. */
     if((table = poflr_get_table_with_ID(ID, lr)) == NULL){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_TABLE_UNEXIST, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_TABLE_UNEXIST, g_recv_xid,controller);
     }
     /* Check index. */
     if(index >= table->size){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_ENTRY_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_ENTRY_ID, g_recv_xid,controller);
     }
     /* Check whether the index have already existed. */
     if((entry = poflr_entry_get_with_index(index, table)) == NULL){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_ENTRY_UNEXIST, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_ENTRY_UNEXIST, g_recv_xid,controller);
     }
-    ret = reply_entry(entry, table, lr);
+    ret = reply_entry(entry, table, lr,controller);
     POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 
     return POF_OK;
 }
 
 uint32_t
-poflr_reply_entry_all(const struct pof_local_resource *lr)
+poflr_reply_entry_all(const struct pof_local_resource *lr,int controller)
 {
     uint32_t ret;
     struct tableInfo *table, *tableNext;
     struct entryInfo *entry, *entryNext;
     HMAP_NODES_IN_STRUCT_TRAVERSE(table, tableNext, idNode, lr->tableIdMap){
         HMAP_NODES_IN_STRUCT_TRAVERSE(entry, entryNext, node, table->entryMap){
-            ret = reply_entry(entry, table, lr);
+            ret = reply_entry(entry, table, lr,controller);
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
         }
     }

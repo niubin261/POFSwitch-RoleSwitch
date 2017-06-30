@@ -45,12 +45,14 @@ uint32_t g_recv_xid = POF_INITIAL_XID;
  * Discribe: This function parses the OpenFlow message received from the Controller,
  *           and execute the response.
 *******************************************************************************/
-uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
+uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,int i){
     struct pof_local_resource *lr, *next;
     uint16_t slot = POF_SLOT_ID_BASE;
     pof_switch_config *config_ptr;
     pof_header        *header_ptr, head;
     pof_flow_entry    *flow_ptr;
+    pof_role_request  *role_ptr;
+    pof_role_reply    role_reply;
     pof_packet_out    *packet_out;//add by wenjian 2015/12/01
     pof_counter       *counter_ptr;
     pof_flow_table    *table_ptr;
@@ -63,7 +65,8 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
     uint32_t          ret = POF_OK;
     uint16_t          len;
     uint8_t           msg_type;
-
+    //uint32_t          queue_id =pofsc_send_q_id[i];
+    int j,role;
     header_ptr = (pof_header*)msg_ptr;
     len = POF_NTOHS(header_ptr->length);
 
@@ -84,8 +87,8 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
     /* Execute different responses according to the OpenFlow type. */
     switch(msg_type){
         case POFT_ECHO_REQUEST:
-            if(POF_OK != pofec_reply_msg(POFT_ECHO_REPLY, g_recv_xid, 0, NULL)){
-                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+            if(POF_OK != pofec_reply_msg(i,POFT_ECHO_REPLY, g_recv_xid, 0, NULL)){
+                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid,i);
             }
             break;
 
@@ -98,20 +101,20 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
             break;
 
         case POFT_GET_CONFIG_REQUEST:
-            ret = poflr_reply_config();
+            ret = poflr_reply_config(i);
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 
             HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
-                ret = poflr_reply_table_resource(lr);
+                ret = poflr_reply_table_resource(i,lr);
                 POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
             }
             HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
-                ret = poflr_reply_port_resource(lr);
+                ret = poflr_reply_port_resource(i,lr);
                 POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
             }
 #ifdef POF_SHT_VXLAN
             HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
-                ret = poflr_reply_slot_status(lr, POFSS_UP, POFSRF_RE_SEND);
+                ret = poflr_reply_slot_status(i,lr, POFSS_UP, POFSRF_RE_SEND);
                 POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
             }
 #endif // POF_SHT_VXLAN
@@ -125,7 +128,7 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
             slot = port_ptr->slotID;
 #endif // POF_MULTIPLE_SLOTS
             if((lr = pofdp_get_local_resource(slot, dp)) == NULL){
-                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_INVALID_SLOT_ID, g_recv_xid);
+                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_INVALID_SLOT_ID, g_recv_xid,i);
             }
 
             ret = poflr_port_openflow_enable(port_ptr->port_id, port_ptr->of_enable, lr);
@@ -138,7 +141,7 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
             pof_HtoN_transfer_slot_config(slotConfig);
 
             if((lr = pofdp_get_local_resource(slotConfig->slotID, dp)) == NULL){
-                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_INVALID_SLOT_ID, g_recv_xid);
+                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_INVALID_SLOT_ID, g_recv_xid,i);
             }
 
             struct portInfo *port, *nextPort;
@@ -167,7 +170,7 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
                     ret = poflr_delete_insBlock(pof_insBlock->instruction_block_id, lr);
                 }
             }else{
-                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_INSBLOCK_MOD_FAILED, POFIMFC_BAD_COMMAND, g_recv_xid);
+                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_INSBLOCK_MOD_FAILED, POFIMFC_BAD_COMMAND, g_recv_xid,i);
             }
 
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
@@ -177,9 +180,10 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
         case POFT_FEATURES_REQUEST:
             ret = poflr_reset_dev_id();
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
-
+            POF_DEBUG_CPRINT_FL(1,GREEN,">>Handle features request message");
             HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
-                ret = poflr_reply_feature_resource(lr);
+            	POF_DEBUG_CPRINT_FL(1,GREEN,">>the controller is %d\n",i);
+                ret = poflr_reply_feature_resource(i,lr);
                 POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
             }
             break;
@@ -187,10 +191,11 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
         case POFT_TABLE_MOD:
             table_ptr = (pof_flow_table*)(msg_ptr + sizeof(pof_header));
             pof_NtoH_transfer_flow_table(table_ptr);
-
+            if (pofsc_conn_desc[i].role !=2) break;
             if(table_ptr->command == POFTC_ADD){
                 HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
-                    ret = poflr_create_flow_table(table_ptr->tid,               \
+                    ret = poflr_create_flow_table(i,                            \
+                    		                      table_ptr->tid,               \
                                                   table_ptr->type,              \
                                                   table_ptr->key_len,           \
                                                   table_ptr->size,              \
@@ -201,10 +206,10 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
                 }
             }else if(table_ptr->command == POFTC_DELETE){
                 HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
-                    ret = poflr_delete_flow_table(table_ptr->tid, table_ptr->type, lr);
+                    ret = poflr_delete_flow_table(i,table_ptr->tid, table_ptr->type, lr);
                 }
             }else{
-                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_COMMAND, g_recv_xid);
+                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_TABLE_MOD_FAILED, POFTMFC_BAD_COMMAND, g_recv_xid,i);
             }
 
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
@@ -213,33 +218,72 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
         case POFT_FLOW_MOD:
             flow_ptr = (pof_flow_entry*)(msg_ptr + sizeof(pof_header));
             pof_NtoH_transfer_flow_entry(flow_ptr);
-
+            if (pofsc_conn_desc[i].role !=2) break;
             if(flow_ptr->command == POFFC_ADD){
                 HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
-                    ret = poflr_add_flow_entry(flow_ptr, lr);
+                    ret = poflr_add_flow_entry(flow_ptr, lr,i);
                 }
             }else if(flow_ptr->command == POFFC_DELETE){
                 HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
-                    ret = poflr_delete_flow_entry(flow_ptr, lr);
+                    ret = poflr_delete_flow_entry(flow_ptr, lr,i);
                 }
             }else if(flow_ptr->command == POFFC_MODIFY){
                 HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
-                    ret = poflr_modify_flow_entry(flow_ptr, lr);
+                    ret = poflr_modify_flow_entry(flow_ptr, lr,i);
                 }
             }else{
-                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_COMMAND, g_recv_xid);
+                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_FLOW_MOD_FAILED, POFFMFC_BAD_COMMAND, g_recv_xid,i);
             }
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 //            usr_cmd_tables();
 
             break;
 
+
+        case POFT_ROLE_REQUEST:
+
+            role_ptr =(pof_role_request *)(msg_ptr + sizeof(pof_header));
+            POF_DEBUG_CPRINT(1,GREEN,">>\n**********This is role request message,the request role is %x",role_ptr->role);
+            //pof_NtoH_transfer_role(role_ptr);
+            POF_DEBUG_CPRINT(1,GREEN,">>\n##########This is role request message,the request role is %d",role_ptr->role);
+            role_reply.role = role_ptr->role;
+            //pof_HtoN_transfer_role(&role_reply);
+            if (role_ptr->role==2){
+            	POF_DEBUG_CPRINT(1,GREEN,">>\nThis request role is master ");
+            	for (j=0;j<n_controller;j++){
+            		if (pofsc_conn_desc[j].role==2){
+            			pofsc_conn_desc[j].role=1;
+            		}
+            	}
+            	pofsc_conn_desc[i].role= 2;
+
+            	master_controller= i;
+
+            	if(POF_OK != pofec_reply_msg(i,POFT_ROLE_REPLY, g_recv_xid,sizeof(pof_role_reply),(uint8_t *)&role_reply)){
+                    POF_ERROR_HANDLE_RETURN_UPWARD(POFET_ROLE_REQUEST_FAILED,POF_WRITE_MSG_QUEUE_FAILURE,g_recv_xid,i);
+            	}
+            	POF_DEBUG_CPRINT(1,GREEN,">>the role of controller:%s is master ",pofsc_conn_desc[i].controller_ip);
+            }
+            else if(role_ptr->role==1){
+            	POF_DEBUG_CPRINT(1,GREEN,">>\nThis request role is standby");
+            	if (pofsc_conn_desc[i].role==2){master_controller=-1;}
+            	pofsc_conn_desc[i].role=1;
+            	if(POF_OK != pofec_reply_msg(i,POFT_ROLE_REPLY, g_recv_xid,sizeof(pof_role_reply),(uint8_t *)&role_reply)){
+            	     POF_ERROR_HANDLE_RETURN_UPWARD(POFET_ROLE_REQUEST_FAILED,POF_WRITE_MSG_QUEUE_FAILURE,g_recv_xid,i);
+            	}
+            	POF_DEBUG_CPRINT(1,GREEN,">>the role of controller:%s is standby ",pofsc_conn_desc[i].controller_ip);
+            }
+
+            break;
+
+
         /*add by wenjian 2015/12/01*/
         case POFT_PACKET_OUT:
          //first move the pointer to the packet_out from header
-            packet_out=(pof_packet_out*)(msg_ptr+sizeof(pof_header));
+         if (pofsc_conn_desc[i].role !=2) break;
+         packet_out=(pof_packet_out*)(msg_ptr+sizeof(pof_header));
          //take transfer from n to h
-            pof_NtoH_transfer_packet_out(packet_out);
+         pof_NtoH_transfer_packet_out(packet_out);
          //POF_DEBUG_CPRINT_OX_NO_ENTER(packet_out,sizeof(packet_out));
          struct pofdp_packet dpp[1] = {0};
          //POF_DEBUG_CPRINT(1,BLUE,"===============start memset\n");
@@ -286,7 +330,7 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
                     ret = poflr_delete_meter_entry(meter_ptr->meter_id, meter_ptr->rate, lr);
                 }
             }else{
-                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_BAD_COMMAND, g_recv_xid);
+                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_METER_MOD_FAILED, POFMMFC_BAD_COMMAND, g_recv_xid,i);
             }
 
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
@@ -309,7 +353,7 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
                     ret = poflr_delete_group_entry(group_ptr, lr);
                 }
             }else{
-                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_BAD_COMMAND, g_recv_xid);
+                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_BAD_COMMAND, g_recv_xid,i);
             }
 
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
@@ -332,7 +376,7 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
                     ret = poflr_counter_delete(counter_ptr->counter_id, lr);
                 }
             }else{
-                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_BAD_COMMAND, g_recv_xid);
+                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_BAD_COMMAND, g_recv_xid,i);
             }
 
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
@@ -343,7 +387,7 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
             pof_NtoH_transfer_counter(counter_ptr);
 
             HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
-                ret = poflr_get_counter_value(counter_ptr->counter_id, lr);
+                ret = poflr_get_counter_value(counter_ptr->counter_id, lr,i);
                 POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
             }
             break;
@@ -355,25 +399,25 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp){
             if(queryall_ptr->slotID == POFSID_ALL){
                 HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
                     /* Query all resource on all slots. TODO */
-                    ret = poflr_reply_queryall(lr);
+                    ret = poflr_reply_queryall(lr,i);
                     POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
                 }
             }else{
                 if((lr = pofdp_get_local_resource(queryall_ptr->slotID, dp)) == NULL){
-                    POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_INVALID_SLOT_ID, g_recv_xid);
+                    POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_INVALID_SLOT_ID, g_recv_xid,i);
                 }
                 /* Query all resource on one slots. TODO */
-                ret = poflr_reply_queryall(lr);
+                ret = poflr_reply_queryall(lr,i);
                 POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
             }
 
-            if(POF_OK != pofec_reply_msg(POFT_QUERYALL_FIN, g_recv_xid, 0, NULL)){
-                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+            if(POF_OK != pofec_reply_msg(i,POFT_QUERYALL_FIN, g_recv_xid, 0, NULL)){
+                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid,i);
             }
             break;
             
         default:
-            POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_REQUEST, POFBRC_BAD_TYPE, g_recv_xid);
+            POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_REQUEST, POFBRC_BAD_TYPE, g_recv_xid,i);
             break;
     }
     return ret;

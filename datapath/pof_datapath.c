@@ -233,7 +233,7 @@ static uint32_t pofdp_recv_raw_task(void *arg_ptr){
     int      sockRecv, sockSend;
 
     if((lr = pofdp_get_local_resource(port_ptr->slotID, dp)) == NULL){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_INVALID_SLOT_ID, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_INVALID_SLOT_ID);
     }
 
 	/* Set GOTO_TABLE instruction to go to the first flow table. */
@@ -241,7 +241,7 @@ static uint32_t pofdp_recv_raw_task(void *arg_ptr){
 
     /* Create socket, and bind it to the specific port. */
     if((sockRecv = socket(AF_PACKET, SOCK_RAW, POF_HTONS(ETH_P_ALL))) == -1){
-        POF_ERROR_HANDLE_NO_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_CREATE_SOCKET_FAILURE, g_upward_xid++);
+        POF_ERROR_HANDLE_NO_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_CREATE_SOCKET_FAILURE);
         /* Delay 0.1s to send error message upward to the Controller. */
         pofbf_task_delay(100);
         terminate_handler();
@@ -249,7 +249,7 @@ static uint32_t pofdp_recv_raw_task(void *arg_ptr){
 
     /* Create socket, and bind it to the specific port. */
     if((sockSend = socket(AF_PACKET, SOCK_RAW, POF_HTONS(ETH_P_ALL))) == -1){
-        POF_ERROR_HANDLE_NO_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_CREATE_SOCKET_FAILURE, g_upward_xid++);
+        POF_ERROR_HANDLE_NO_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_CREATE_SOCKET_FAILURE);
         /* Delay 0.1s to send error message upward to the Controller. */
         pofbf_task_delay(100);
         terminate_handler();
@@ -260,7 +260,7 @@ static uint32_t pofdp_recv_raw_task(void *arg_ptr){
     sockadr.sll_ifindex = port_ptr->sysIndex;
 
     if(bind(sockRecv, (struct sockaddr *)&sockadr, sizeof(struct sockaddr_ll)) != 0){
-       POF_ERROR_HANDLE_NO_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_BIND_SOCKET_FAILURE, g_upward_xid++);
+       POF_ERROR_HANDLE_NO_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_BIND_SOCKET_FAILURE);
         /* Delay 0.1s to send error message upward to the Controller. */
         pofbf_task_delay(100);
         terminate_handler();
@@ -278,7 +278,7 @@ static uint32_t pofdp_recv_raw_task(void *arg_ptr){
         /* Receive the raw packet. */
         if((len_B = recvfrom(sockRecv, dpp->packetBuf, POFDP_PACKET_RAW_MAX_LEN, 0, \
                         (struct sockaddr *)&from, &from_len)) <=0){
-            POF_ERROR_HANDLE_NO_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_RECEIVE_MSG_FAILURE, g_upward_xid++);
+            POF_ERROR_HANDLE_NO_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_RECEIVE_MSG_FAILURE);
             continue;
         }
 
@@ -358,7 +358,7 @@ send_raw(const struct pofdp_packet *dpp, const struct pof_local_resource *lr)
     if(sendto(port->queue_fd[1], dpp->buf_out, dpp->output_whole_len, 0, (struct sockaddr *)&sll, sizeof(sll)) == -1){
     //if(sendto(sock, dpp->buf_out, dpp->output_whole_len, 0, (struct sockaddr *)&sll, sizeof(sll)) == -1){
     	printf("here error!!\n");
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_SEND_MSG_FAILURE, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_SEND_MSG_FAILURE);
     }
 
     return POF_OK;
@@ -397,7 +397,7 @@ uint32_t pofdp_send_raw(struct pofdp_packet *dpp, const struct pof_local_resourc
 
     /* Check the packet lenght. */
     if(dpp->output_whole_len > POF_MTU_LENGTH){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR);
     }
 
     if(send_raw(dpp, lr) != POF_OK){
@@ -437,6 +437,7 @@ uint32_t pofdp_send_packet_in_to_controller(uint16_t len,       \
 {
     pof_packet_in packetin = {0};
     uint32_t      packet_in_len;
+    int controller;
 
     /* The length of the packet in data upward to the Controller is the real length
      * instead of the max length of the packet_in. */
@@ -444,7 +445,7 @@ uint32_t pofdp_send_packet_in_to_controller(uint16_t len,       \
 
     /* Check the packet length. */
     if(len > POF_PACKET_IN_MAX_LENGTH){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR);
     }
 
     packetin.buffer_id = 0xffffffff;
@@ -462,11 +463,12 @@ uint32_t pofdp_send_packet_in_to_controller(uint16_t len,       \
     memcpy(packetin.data, packet, len);
 
     pof_NtoH_transfer_packet_in(&packetin);
+    if (master_controller>=0){
 
-    if(POF_OK != pofec_reply_msg(POFT_PACKET_IN, g_upward_xid++, packet_in_len, (uint8_t *)&packetin)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+    if(POF_OK != pofec_reply_msg(master_controller,POFT_PACKET_IN, g_upward_xid++, packet_in_len, (uint8_t *)&packetin)){
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE);
     }
-
+    }
     return POF_OK;
 }
 

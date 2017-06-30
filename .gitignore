@@ -33,3 +33,9 @@
 *.su
 
 *.Po
+.idea
+log
+log*
+.settings
+pof_log*
+cmake-build-debug

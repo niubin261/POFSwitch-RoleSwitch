@@ -83,7 +83,7 @@ uint32_t
 poflr_counter_init(uint32_t counter_id, struct pof_local_resource *lr)
 {
     struct counterInfo *counter;
-
+    char *ptr;
 	if(!counter_id){
 		POF_DEBUG_CPRINT_FL(1,GREEN,"The counter_id 0 means that counter is no need.");
 		return POF_OK;
@@ -91,11 +91,11 @@ poflr_counter_init(uint32_t counter_id, struct pof_local_resource *lr)
 
     /* Check counter id. */
     if(counter_id >= lr->counterNumMax){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_BAD_COUNTER_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_BAD_COUNTER_ID);
     }
     if(!poflr_get_counter_with_ID(counter_id, lr)){
         counter = map_counterCreate();
-        POF_MALLOC_ERROR_HANDLE_RETURN_UPWARD(counter, g_upward_xid++);
+        POF_MALLOC_ERROR_HANDLE_RETURN_NO_UPWARD(ptr);
         counter->id = counter_id;
         counter->idNode.hash = map_counterHashByID(counter_id);
         map_counterInsert(counter, lr);
@@ -125,10 +125,10 @@ poflr_counter_delete(uint32_t counter_id, struct pof_local_resource *lr)
 
     /* Check counter id. */
     if(counter_id >= lr->counterNumMax){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_BAD_COUNTER_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_BAD_COUNTER_ID);
     }
     if(!(counter = poflr_get_counter_with_ID(counter_id, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_COUNTER_UNEXIST, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_COUNTER_UNEXIST);
     }
 
     map_counterDelete(counter, lr);
@@ -157,10 +157,10 @@ poflr_counter_clear(uint32_t counter_id, struct pof_local_resource *lr)
 
     /* Check counter_id. */
     if(counter_id >= lr->counterNumMax){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_BAD_COUNTER_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_BAD_COUNTER_ID);
     }
     if(!(counter = poflr_get_counter_with_ID(counter_id, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_COUNTER_UNEXIST, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_COUNTER_UNEXIST);
     }
 
     /* Initialize the counter value. */
@@ -185,17 +185,17 @@ poflr_counter_clear(uint32_t counter_id, struct pof_local_resource *lr)
  *           through the OpenFlow channel.
  ***********************************************************************/
 uint32_t 
-poflr_get_counter_value(uint32_t counter_id, struct pof_local_resource *lr)
+poflr_get_counter_value(uint32_t counter_id, struct pof_local_resource *lr,int controller)
 {
     struct counterInfo *counter;
     pof_counter pofCounter = {0};
 
     /* Check counter_id. */
     if(!counter_id || counter_id >= lr->counterNumMax){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_BAD_COUNTER_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_BAD_COUNTER_ID, g_recv_xid,controller);
     }
     if(!(counter = poflr_get_counter_with_ID(counter_id, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_COUNTER_UNEXIST, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_COUNTER_UNEXIST, g_recv_xid,controller);
     }
 
 #ifdef POF_MULTIPLE_SLOTS
@@ -214,8 +214,8 @@ poflr_get_counter_value(uint32_t counter_id, struct pof_local_resource *lr)
 	/* Delay 0.1s. */
 	pofbf_task_delay(100);
 
-    if(POF_OK != pofec_reply_msg(POFT_COUNTER_REPLY, g_recv_xid, sizeof(pof_counter), (uint8_t *)&pofCounter)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+    if(POF_OK != pofec_reply_msg(controller,POFT_COUNTER_REPLY, g_recv_xid, sizeof(pof_counter), (uint8_t *)&pofCounter)){
+        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid,controller);
     }
 
 #ifdef POF_SD2N
@@ -230,7 +230,7 @@ poflr_get_counter_value(uint32_t counter_id, struct pof_local_resource *lr)
 }
 
 uint32_t
-poflr_reply_counter_all(const struct pof_local_resource *lr)
+poflr_reply_counter_all(const struct pof_local_resource *lr,int controller)
 {
     struct pof_counter pofCounter = {0};
     struct counterInfo *counter, *next;
@@ -247,8 +247,8 @@ poflr_reply_counter_all(const struct pof_local_resource *lr)
 #endif // POF_SD2N
         pof_NtoH_transfer_counter(&pofCounter);
 
-        if(POF_OK != pofec_reply_msg(POFT_COUNTER_REPLY, g_recv_xid, sizeof(pof_counter), (uint8_t *)&pofCounter)){
-            POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+        if(POF_OK != pofec_reply_msg(controller,POFT_COUNTER_REPLY, g_recv_xid, sizeof(pof_counter), (uint8_t *)&pofCounter)){
+            POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid,controller);
         }
     }
 }
@@ -280,7 +280,7 @@ poflr_counter_increace(uint32_t counter_id, struct pof_local_resource *lr)
 
     /* Check the counter id. */
     if(counter_id >= lr->counterNumMax){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_BAD_COUNTER_ID, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_COUNTER_MOD_FAILED, POFCMFC_BAD_COUNTER_ID);
     }
     if(!(counter = poflr_get_counter_with_ID(counter_id, lr))){
 		poflr_counter_init(counter_id, lr);
@@ -325,10 +325,12 @@ uint32_t poflr_empty_counter(struct pof_local_resource *lr){
 }
 
 /* Get counter table. */
+
+
 struct counterInfo *
 poflr_get_counter_with_ID(uint32_t id, const struct pof_local_resource *lr)
 {
     struct counterInfo *counter, *ptr;
-    return HMAP_STRUCT_GET(counter, idNode, \
-            map_counterHashByID(id), lr->counterMap, ptr);
+    return HMAP_STRUCT_GET(counter, idNode, map_counterHashByID(id), lr->counterMap, ptr);
 }
+

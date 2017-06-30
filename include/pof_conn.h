@@ -54,6 +54,8 @@
 
 extern char pofsc_controller_ip_addr[POF_IP_ADDRESS_STRING_LEN];
 extern uint16_t pofsc_controller_port;
+extern uint8_t local_port_index;
+extern uint32_t pofsc_send_q_id[10];
 
 /* Openflow device connection description. */
 typedef struct pofsc_dev_conn_desc{
@@ -62,6 +64,7 @@ typedef struct pofsc_dev_conn_desc{
     uint16_t controller_port;
 
     /* Connection socket id and socket buffers. */
+    int role;
     int sfd; /* Scket id. */
     char send_buf[POF_SEND_BUF_MAX_SIZE];
     char recv_buf[POF_RECV_BUF_MAX_SIZE];
@@ -80,6 +83,13 @@ typedef struct pofsc_dev_conn_desc{
     uint8_t local_port_index;
 }  pofsc_dev_conn_desc;
 
+
+typedef struct pofsc_controller{
+	char controller_ip[POF_IP_ADDRESS_STRING_LEN];
+	uint32_t port;
+
+}pofsc_controller;
+
 /* Define Soft Switch control module state. */
 typedef enum{
     POFCS_CHANNEL_INVALID       = 0,
@@ -94,18 +104,23 @@ typedef enum{
 } pof_channel_state;
 
 /* Description of device connection. */
-extern volatile pofsc_dev_conn_desc pofsc_conn_desc;
+extern volatile pofsc_dev_conn_desc pofsc_conn_desc[10];
+extern int n_controller;
+extern int controller_index;
+extern pthread_mutex_t mutex;
+extern int master_controller;
 
 extern uint32_t pof_set_init_config(int argc, char *argv[], struct pof_datapath *);
 extern uint32_t pof_auto_clear();
 extern uint32_t pofsc_set_controller_ip(char *ip_str);
-extern uint32_t pofsc_set_controller_port(uint16_t port);
+extern uint32_t pofsc_set_controller_port(char *port);
 
 /* parse and encap. */
-extern uint32_t pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *);
-extern uint32_t pofec_reply_error(uint16_t type, uint16_t code, char *s, uint32_t xid);
+extern uint32_t pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *,int i);
+extern uint32_t pofec_reply_error(uint16_t type, uint16_t code, char *s, uint32_t xid,int controller);
 extern uint32_t pofec_set_error(uint16_t type, char *type_str, uint16_t code, char *error_str);
-extern uint32_t pofec_reply_msg(uint8_t  type, \
+extern uint32_t pofec_reply_msg(int i,\
+		                        uint8_t  type, \
                                 uint32_t xid, \
                                 uint32_t msg_len, \
                                 uint8_t  *msg_body);

@@ -274,7 +274,7 @@ start_cmd_port(OPT_ARG)
     if(optarg == NULL){
         return POF_ERROR;
     }
-    pofsc_set_controller_port(atoi(optarg));
+    pofsc_set_controller_port(optarg);
     return POF_OK;
 }
 
@@ -375,6 +375,7 @@ start_cmd_version(OPT_ARG)
  ***********************************************************************/
 static uint32_t pof_set_init_config_by_command(int argc, char *argv[], struct pof_datapath *dp){
 	uint32_t ret = POF_OK;
+
 #define OPTSTRING_LEN (100)
 	char optstring[OPTSTRING_LEN] = {0};
 #undef OPTSTRING_LEN
@@ -479,13 +480,13 @@ readConfigFile(FILE *fp, struct pof_datapath *dp)
 			if(fscanf(fp, "%s", ip_str) != 1){
 				ret = POF_ERROR;
 			}else{
-				pofsc_set_controller_ip(ip_str);
+				//pofsc_set_controller_ip(ip_str);
 			}
 		}else{
 			data = pofsic_get_config_data(fp, &ret);
 			switch(config_type){
 				case POFICT_CONNECTION_PORT:
-	                pofsc_set_controller_port(data);
+	               // pofsc_set_controller_port(data);
 					break;
 				case POFICT_MM_TABLE_NUMBER:
                     param->tableNumMaxEachType[POF_MM_TABLE] = data;
@@ -587,7 +588,6 @@ versionInit(const char *version1, const char *version2)
  ***********************************************************************/
 uint32_t pof_set_init_config(int argc, char *argv[], struct pof_datapath *dp){
 	uint32_t ret;
-
     versionInit(POFSwitch_VERSION_STR, POFSWITCH_VERSION_SUB);
 	ret = pof_set_init_config_by_file(dp);
 	ret = pof_set_init_config_by_command(argc, argv, dp);

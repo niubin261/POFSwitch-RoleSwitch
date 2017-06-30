@@ -173,7 +173,7 @@ openPort(struct portInfo * port)
 	int      sock;
 	int      ret;
 	if((sock = socket(AF_PACKET, SOCK_RAW, POF_HTONS(ETH_P_ALL))) == -1){
-	        POF_ERROR_HANDLE_NO_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_CREATE_SOCKET_FAILURE, g_upward_xid++);
+	        POF_ERROR_HANDLE_NO_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_CREATE_SOCKET_FAILURE);
 	        /* Delay 0.1s to send error message upward to the Controller. */
 	        pofbf_task_delay(100);
 	        terminate_handler();
@@ -182,7 +182,7 @@ openPort(struct portInfo * port)
 	 sockadr.sll_protocol = POF_HTONS(ETH_P_ALL);
 	 sockadr.sll_ifindex = port->sysIndex;
 	 if(bind(sock, (struct sockaddr *)&sockadr, sizeof(struct sockaddr_ll)) != 0){
-	       POF_ERROR_HANDLE_NO_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_BIND_SOCKET_FAILURE, g_upward_xid++);
+	       POF_ERROR_HANDLE_NO_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_BIND_SOCKET_FAILURE);
 	       /* Delay 0.1s to send error message upward to the Controller. */
 	       pofbf_task_delay(100);
 	       terminate_handler();
@@ -222,7 +222,7 @@ openQueueSocket(const char * name, uint16_t class_id, int * fd)
 
 	*fd = socket(AF_PACKET, SOCK_RAW, POF_HTONS(ETH_P_ALL)); /* this is a write-only sock */
 	if (*fd < 0) {
-		 POF_ERROR_HANDLE_NO_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_CREATE_SOCKET_FAILURE, g_upward_xid++);
+		 POF_ERROR_HANDLE_NO_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_CREATE_SOCKET_FAILURE);
 	     /* Delay 0.1s to send error message upward to the Controller. */
 		 pofbf_task_delay(100);
 		 terminate_handler();
@@ -507,6 +507,7 @@ poflr_del_port(const char *ethName, struct pof_local_resource *lr)
 {
     struct portInfo *port;
     uint32_t ret;
+    int controller;
 
     /* Get the port. */
     if( !(port = poflr_get_port_with_name(ethName, lr))){
@@ -514,9 +515,10 @@ poflr_del_port(const char *ethName, struct pof_local_resource *lr)
     }
 
     /* Report to the Controllerr. */
-	ret = poflr_port_report(POFPR_DELETE, port);
+    for (controller=0;controller<n_controller;controller++){
+	ret = poflr_port_report(controller,POFPR_DELETE, port);
 	POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
-
+    }
     /* Shut down the task which listen to the port. */
 	ret = pofbf_task_delete(&port->taskID);
 	POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
@@ -693,6 +695,7 @@ poflr_add_port(const char *name, struct pof_local_resource *lr)
 {
     struct portInfo *port;
     uint32_t ret;
+    int controller;
 
     /* Check whether already have. */
     if(poflr_get_port_with_name(name, lr)){
@@ -713,9 +716,10 @@ poflr_add_port(const char *name, struct pof_local_resource *lr)
     map_portInsert(port, lr);
 
     /* Report to the Controller for adding a new one. */
-	ret = poflr_port_report(POFPR_ADD, port);
+    for(controller=0;controller<n_controller;controller++){
+	ret = poflr_port_report(controller,POFPR_ADD, port);
 	POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
-
+    }
     /* Create a new task for listening to the port. */
 	ret = pofdp_create_port_listen_task(port);
 	if(POF_OK != ret){
@@ -957,7 +961,7 @@ uint32_t poflr_port_openflow_enable(uint32_t port_id, uint8_t ulFlowEnableFlg, s
 
     /* Get the port. */
     if((port = poflr_get_port_with_pofindex(port_id, lr)) == NULL){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_PORT_MOD_FAILED, POFPMFC_BAD_PORT_ID, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_PORT_MOD_FAILED, POFPMFC_BAD_PORT_ID);
     }
     port->of_enable = ulFlowEnableFlg;
     POF_DEBUG_CPRINT_FL(1,GREEN,"Port openflow enable MOD SUC!");
@@ -1029,11 +1033,12 @@ poflr_port_detect_old(struct pof_local_resource *lr)
 {
     uint32_t ret;
     struct portInfo *port, *next, tmp;
-
+    int controller;
     /* Traverse all ports. */
     HMAP_NODES_IN_STRUCT_TRAVERSE(port, next, pofIndexNode, lr->portPofIndexMap){
         /* Check whether the system still have the port. */
         if(checkPortNameInSys(port->name) != POF_OK){
+
             poflr_del_port(port->name, lr);
             continue;
         }
@@ -1044,9 +1049,10 @@ poflr_port_detect_old(struct pof_local_resource *lr)
         if(comparePorts(port, &tmp) != TRUE){
             /* If the port has been changed, update the port information and report to Controller. */
             updatePorts(port, &tmp);
-            ret = poflr_port_report(POFPR_MODIFY, port);
+            for (controller=0;controller<n_controller;controller++){
+            ret = poflr_port_report(controller,POFPR_MODIFY, port);
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
-        }
+        }}
     }
 
 	return POF_OK;
@@ -1108,7 +1114,7 @@ port_report_fill_msg(struct pof_port *p, const struct portInfo *port)
 
 /* Report to the Controller about the port information. */
 uint32_t 
-poflr_port_report(uint8_t reason, const struct portInfo *port)
+poflr_port_report(int controller,uint8_t reason, const struct portInfo *port)
 {
     pof_port_status port_status = {0};
 
@@ -1116,8 +1122,8 @@ poflr_port_report(uint8_t reason, const struct portInfo *port)
     port_report_fill_msg(&port_status.desc, port);
 	pof_HtoN_transfer_port_status(&port_status);
 
-	if(POF_OK != pofec_reply_msg(POFT_PORT_STATUS, g_upward_xid, sizeof(pof_port_status), (uint8_t *)&port_status)){
-		POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE, g_recv_xid);
+	if(POF_OK != pofec_reply_msg(controller,POFT_PORT_STATUS, g_upward_xid, sizeof(pof_port_status), (uint8_t *)&port_status)){
+		POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE);
 	}
 
     return POF_OK;

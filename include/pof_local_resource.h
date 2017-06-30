@@ -227,16 +227,16 @@ extern uint32_t g_poflr_dev_id;
 /* Local_resource. */
 extern uint32_t pof_localresource_init(struct pof_local_resource *);
 extern uint32_t poflr_set_config(uint16_t flags, uint16_t miss_send_len);
-extern uint32_t poflr_reply_config();
-extern uint32_t poflr_reply_feature_resource(struct pof_local_resource *);
-extern uint32_t poflr_reply_table_resource(struct pof_local_resource *);
+extern uint32_t poflr_reply_config(int controller);
+extern uint32_t poflr_reply_feature_resource(int controller,struct pof_local_resource *);
+extern uint32_t poflr_reply_table_resource(int controller, struct pof_local_resource *);
 #ifdef POF_SHT_VXLAN
-extern uint32_t poflr_reply_slot_status(struct pof_local_resource *lr,  \
+extern uint32_t poflr_reply_slot_status(int controller,struct pof_local_resource *lr,  \
                                         enum pof_slot_status_enum status,    \
                                         enum pof_slot_resend_flag flag);
 #endif // POF_SHT_VXLAN
-extern uint32_t poflr_reply_port_resource(struct pof_local_resource *);
-extern uint32_t poflr_reply_queryall(struct pof_local_resource *lr);
+extern uint32_t poflr_reply_port_resource(int i,struct pof_local_resource *);
+extern uint32_t poflr_reply_queryall(struct pof_local_resource *lr,int controller);
 extern uint32_t poflr_clear_resource(struct pof_local_resource *);
 extern uint32_t poflr_get_switch_config(pof_switch_config **config_ptrptr);
 extern uint32_t poflr_get_switch_feature(pof_switch_features **feature_ptrptr);
@@ -247,7 +247,7 @@ extern uint32_t poflr_reset_dev_id();
 /* Port. */
 extern uint32_t poflr_init_port(struct pof_local_resource *);
 extern uint32_t poflr_port_detect_task();
-extern uint32_t poflr_port_report(uint8_t reason, const struct portInfo *port);
+extern uint32_t poflr_port_report(int controller,uint8_t reason, const struct portInfo *port);
 extern uint32_t poflr_get_hwaddr_by_ipaddr(uint8_t *hwaddr, char *ipaddr_stri, struct pof_local_resource *);
 extern uint32_t poflr_port_openflow_enable(uint32_t port_id, uint8_t ulFlowEnableFlg, \
                                            struct pof_local_resource *);
@@ -259,7 +259,8 @@ extern uint32_t poflr_add_port(const char *name, struct pof_local_resource *lr);
 extern uint32_t poflr_add_port_only_name(const char *name, uint16_t slotID);
 
 /* Flow table. */
-extern uint32_t poflr_create_flow_table(uint8_t id,                      \
+extern uint32_t poflr_create_flow_table(int controller,                  \
+		                                uint8_t id,                      \
                                         uint8_t type,                    \
                                         uint16_t key_len,                \
                                         uint32_t size,                   \
@@ -267,7 +268,8 @@ extern uint32_t poflr_create_flow_table(uint8_t id,                      \
                                         uint8_t match_field_num,         \
                                         pof_match *match,                \
                                         struct pof_local_resource *lr);
-extern uint32_t poflr_delete_flow_table(uint8_t id,                      \
+extern uint32_t poflr_delete_flow_table(int controller,\
+		                                uint8_t id,                      \
                                         uint8_t type,                    \
                                         struct pof_local_resource *lr);
 extern uint32_t poflr_init_flow_table(struct pof_local_resource *);
@@ -283,9 +285,9 @@ extern uint32_t poflr_table_id_to_ID(uint8_t type,                 \
 extern struct tableInfo *poflr_get_table_with_ID(uint8_t, const struct pof_local_resource *);
 extern uint32_t poflr_set_key_len(uint32_t key_len);
 
-extern uint32_t poflr_add_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resource *);
-extern uint32_t poflr_modify_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resource *);
-extern uint32_t poflr_delete_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resource *);
+extern uint32_t poflr_add_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resource *,int controller);
+extern uint32_t poflr_modify_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resource *, int controller );
+extern uint32_t poflr_delete_flow_entry(pof_flow_entry *flow_ptr, struct pof_local_resource *, int controller);
 extern struct entryInfo *poflr_entry_get_with_index(uint32_t index, const struct tableInfo *table);
 extern struct entryInfo *poflr_entry_lookup_Linear(uint32_t index, const struct tableInfo *table);
 extern struct entryInfo *poflr_entry_lookup(const uint8_t *packet,          \
@@ -314,7 +316,7 @@ extern struct groupInfo *poflr_get_group_with_ID(uint32_t id, \
 extern uint32_t poflr_counter_init(uint32_t counter_id, struct pof_local_resource *);
 extern uint32_t poflr_counter_delete(uint32_t counter_id, struct pof_local_resource *);
 extern uint32_t poflr_counter_clear(uint32_t counter_id, struct pof_local_resource *);
-extern uint32_t poflr_get_counter_value(uint32_t counter_id, struct pof_local_resource *);
+extern uint32_t poflr_get_counter_value(uint32_t counter_id, struct pof_local_resource *,int controller);
 #ifdef POF_SD2N
 extern uint32_t poflr_counter_increace(uint32_t counter_id, uint16_t byte_len, struct pof_local_resource *);
 #else // POF_SD2N
@@ -336,15 +338,15 @@ struct insBlockInfo * poflr_get_insBlock_with_ID(uint32_t id, const struct pof_l
 #endif //POF_SHT_VXLAN
 
 /* Reply the query. */
-extern uint32_t poflr_reply_table(const struct pof_local_resource *lr, uint8_t id, uint8_t type);
-extern uint32_t poflr_reply_table_all(const struct pof_local_resource *lr);
+extern uint32_t poflr_reply_table(const struct pof_local_resource *lr, uint8_t id, uint8_t type,int controller);
+extern uint32_t poflr_reply_table_all(const struct pof_local_resource *lr,int controller);
 extern uint32_t poflr_reply_entry(const struct pof_local_resource *lr, uint8_t table_id, \
-            uint8_t table_type, uint32_t index);
-extern uint32_t poflr_reply_entry_all(const struct pof_local_resource *lr);
-extern uint32_t poflr_reply_group(const struct pof_local_resource *lr, uint32_t groupID);
-extern uint32_t poflr_reply_group_all(const struct pof_local_resource *lr);
-extern uint32_t poflr_reply_meter(const struct pof_local_resource *lr, uint32_t meterID);
-extern uint32_t poflr_reply_meter_all(const struct pof_local_resource *lr);
-extern uint32_t poflr_reply_counter_all(const struct pof_local_resource *lr);
+            uint8_t table_type, uint32_t index,int controller);
+extern uint32_t poflr_reply_entry_all(const struct pof_local_resource *lr,int controller);
+extern uint32_t poflr_reply_group(const struct pof_local_resource *lr, uint32_t groupID,int controller);
+extern uint32_t poflr_reply_group_all(const struct pof_local_resource *lr,int controller);
+extern uint32_t poflr_reply_meter(const struct pof_local_resource *lr, uint32_t meterID,int controller);
+extern uint32_t poflr_reply_meter_all(const struct pof_local_resource *lr,int controller);
+extern uint32_t poflr_reply_counter_all(const struct pof_local_resource *lr,int controller);
 
 #endif // _POF_LOCALRESOURCE_H_

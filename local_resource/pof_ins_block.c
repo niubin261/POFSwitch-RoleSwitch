@@ -87,7 +87,7 @@ poflr_add_insBlock(struct pof_instruction_block *pof_insBlock, struct pof_local_
     struct insBlockInfo *insBlock = NULL;
 
     if(poflr_get_insBlock_with_ID(pof_insBlock->instruction_block_id, lr)){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_INSBLOCK_MOD_FAILED, POFIMFC_INSBLOCK_EXIST, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_INSBLOCK_MOD_FAILED, POFIMFC_INSBLOCK_EXIST);
     }
     
     for(i=0; i<insNum; i++){
@@ -96,7 +96,7 @@ poflr_add_insBlock(struct pof_instruction_block *pof_insBlock, struct pof_local_
     }
 
     insBlock = map_insBlockCreate(insSize);
-    POF_MALLOC_ERROR_HANDLE_RETURN_UPWARD(insBlock, g_upward_xid++);
+    //POF_MALLOC_ERROR_HANDLE_RETURN_UPWARD(insBlock, g_upward_xid++);
     insBlock->blockID = pof_insBlock->instruction_block_id;
     insBlock->idNode.hash = map_insBlockHashByID(insBlock->blockID);
     map_insBlockInsert(insBlock, lr);
@@ -116,7 +116,7 @@ poflr_delete_insBlock(uint16_t blockID, struct pof_local_resource *lr)
 
     /* Get the insBlock. */
     if(!(insBlock = poflr_get_insBlock_with_ID(blockID, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_INSBLOCK_MOD_FAILED, POFIMFC_INSBLOCK_UNEXIST, g_recv_xid);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_INSBLOCK_MOD_FAILED, POFIMFC_INSBLOCK_UNEXIST);
     }
 
     /* Delete the insBlock from local resource, and free the memory. */

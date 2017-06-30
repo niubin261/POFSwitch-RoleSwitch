@@ -91,7 +91,7 @@ insertTagToPacket(uint32_t tag_pos_b, uint32_t tag_len_b, const uint8_t *value, 
     /* Check the length. */
     if((dpp->offset + dpp->left_len + POF_BITNUM_TO_BYTENUM_CEIL(tag_len_b)) > POFDP_PACKET_RAW_MAX_LEN \
             || len_b_behindtag < 0){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR);
     }
 
     /* Copy the data left to a temp buffer. */
@@ -455,7 +455,7 @@ execute_CALCULATE_FIELD(POFDP_ARG)
 		CALCULATIONS
 #undef CALCULATION
 		default:
-			POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_ACTION, POFBAC_BAD_TYPE, g_upward_xid++);
+			POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_ACTION, POFBAC_BAD_TYPE);
 			break;
 	}
 
@@ -490,7 +490,7 @@ static uint32_t execute_GROUP(POFDP_ARG)
 
     group_id = p->group_id;
     if(!(group = poflr_get_group_with_ID(group_id, lr))){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_UNKNOWN_GROUP, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_GROUP_MOD_FAILED, POFGMFC_UNKNOWN_GROUP);
     }
 
     POF_DEBUG_CPRINT_FL(1,BLUE,"Go to Group[%u]", group_id);
@@ -598,7 +598,7 @@ static uint32_t execute_SET_FIELD(POFDP_ARG)
 
     /* Check len_b. */
     if(len_b > POFDP_PACKET_RAW_MAX_LEN * POF_BITNUM_IN_BYTE){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_FIELD_LEN_ERROR, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_FIELD_LEN_ERROR);
     }
 
     /* Get the buf according to the match field id. */
@@ -613,7 +613,7 @@ static uint32_t execute_SET_FIELD(POFDP_ARG)
 
     /* Check packet length. */
     if(dpp->left_len * POF_BITNUM_IN_BYTE < offset_b + len_b){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR);
     }
 
     for(i=0; i<POF_MAX_FIELD_LENGTH_IN_BYTE; i++){
@@ -654,7 +654,7 @@ static uint32_t execute_SET_FIELD_FROM_METADATA(POFDP_ARG)
 
     /* Check packet length. */
     if(dpp->left_len * POF_BITNUM_IN_BYTE < offset_b + len_b){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR);
     }
 
     pofbf_copy_bit((uint8_t *)dpp->metadata, value, metadata_offset_b, len_b);
@@ -722,7 +722,7 @@ static uint32_t execute_CALCULATE_CHECKSUM(POFDP_ARG)
     cs_len_b = p->checksum_len;
 
     if(cs_len_b > 64){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_ACTION, POFBAC_BAD_LEN, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_ACTION, POFBAC_BAD_LEN);
     }
 
     uint8_t *checksum_buf, *cal_buf;
@@ -773,11 +773,11 @@ static uint32_t execute_OUTPUT(POFDP_ARG)
 
     struct portInfo *port, *next;//add by wenjian 2015/12/01
     if(p->packet_offset > dpp->left_len){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR);
     }
 
     if(POF_BITNUM_TO_BYTENUM_CEIL(p->metadata_len + p->metadata_offset) > dpp->metadata_len){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_METADATA_LEN_ERROR, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_METADATA_LEN_ERROR);
     }
 
 #ifdef POF_SD2N
@@ -790,7 +790,7 @@ static uint32_t execute_OUTPUT(POFDP_ARG)
     dpp->output_port_id = value & 0xFFFF;
 
     if((lrPort = pofdp_get_local_resource(dpp->output_slot_id, dpp->dp)) == NULL){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_INVALID_SLOT_ID, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_INVALID_SLOT_ID);
     }
 
     dpp->output_packet_offset = p->packet_offset;   /* Byte unit. */
@@ -813,7 +813,7 @@ static uint32_t execute_OUTPUT(POFDP_ARG)
        //get all the port id execept the input port id
      	HMAP_NODES_IN_STRUCT_TRAVERSE(port, next, pofIndexNode, lrPort->portPofIndexMap){
         	POF_DEBUG_CPRINT(1,BLUE,"sysIndex=%d,pofIndex=%d,ori_port_id=%d\n",port->sysIndex,port->pofIndex,dpp->ori_port_id);
-        	if(port->pofIndex!=dpp->ori_port_id&&port->pofIndex!=pofsc_conn_desc.local_port_index){
+        	if(port->pofIndex!=dpp->ori_port_id&&port->pofIndex!=local_port_index){
                 if(port->config!=16)
                 {
                 	POF_DEBUG_CPRINT(1,BLUE,"config=%d",port->config);
@@ -866,7 +866,7 @@ static uint32_t execute_ADD_FIELD(POFDP_ARG)
 #ifdef POF_SHT_VXLAN
     /* Check len_b. */
     if(tag_len_b > POFDP_PACKET_RAW_MAX_LEN * POF_BITNUM_IN_BYTE){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_FIELD_LEN_ERROR, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_FIELD_LEN_ERROR);
     }
     /* Get value. */
     ret = pofdp_get_value_byte(value_byte, tag_len_b, p->tag_type, &p->tag, dpp);
@@ -880,7 +880,7 @@ static uint32_t execute_ADD_FIELD(POFDP_ARG)
 #else // POF_SD2N_AFTER1015
 	if(tag_len_b > 64){
 #endif
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_FIELD_LEN_ERROR, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_FIELD_LEN_ERROR);
 	}
 
     /* Get value. */
@@ -932,7 +932,7 @@ static uint32_t execute_DELETE_FIELD(POFDP_ARG)
     len_b_behindtag = dpp->left_len * POF_BITNUM_IN_BYTE - (tag_pos_b + tag_len_b);
 
     if((int16_t)len_b_behindtag < 0){
-        POF_ERROR_HANDLE_RETURN_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR, g_upward_xid++);
+        POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_PACKET_LEN_ERROR);
     }
 
     pofbf_copy_bit(dpp->buf_offset, buf_temp, tag_pos_b+tag_len_b, len_b_behindtag);
@@ -956,7 +956,7 @@ static uint32_t
 execute_EXPERIMENTER(POFDP_ARG)
 {
 	// TODO
-	POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_ACTION, POFBAC_BAD_TYPE, g_upward_xid++);
+	POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_ACTION, POFBAC_BAD_TYPE);
 }
 
 /***********************************************************************
@@ -978,7 +978,7 @@ uint32_t pofdp_action_execute(POFDP_ARG)
 #undef ACTION
 
             default:
-                POF_ERROR_HANDLE_RETURN_UPWARD(POFET_BAD_ACTION, POFBAC_BAD_TYPE, g_upward_xid++);
+                POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_BAD_ACTION, POFBAC_BAD_TYPE);
                 break;
         }
         POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
