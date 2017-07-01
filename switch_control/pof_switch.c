@@ -568,7 +568,7 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                     process_len = 0;
                 }
 
-				sleep(1);
+				//sleep(1);
 				if (n_controller==1){
 				    conn_desc_ptr->role=2;}
 				else{
@@ -1231,8 +1231,11 @@ static uint32_t pofsc_performance_after_ctrl_disconn(struct pof_datapath *dp,int
     terminate_handler();
 #elif (POF_PERFORM_AFTER_CTRL_DISCONN == POF_AFTER_CTRL_DISCONN_RECONN)
     pofsc_conn_desc[i].conn_status.state = POFCS_CHANNEL_INVALID;
-    if (pofsc_conn_desc[i].role==2){ master_controller = -1;}
-    pofsc_conn_desc[i].role = 3;
+    if (pofsc_conn_desc[i].role==ROLE_MASTER){ master_controller = -1;}
+    pofsc_conn_desc[i].role = ROLE_SLAVE;
+    if (pofsc_conn_desc[i].role==ROLE_EQUAL){
+        pofsc_conn_desc[i].role==ROLE_SLAVE;
+    }
 	if(pof_auto_clear()){
         HMAP_NODES_IN_STRUCT_TRAVERSE(lr, lrNext, slotNode, dp->slotMap){
 		    poflr_clear_resource(lr);

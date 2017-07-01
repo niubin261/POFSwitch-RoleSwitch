@@ -101,10 +101,12 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,i
             break;
 
         case POFT_GET_CONFIG_REQUEST:
+            POF_DEBUG("@POFT_GET_CONFIG_REQUEST\n");
             ret = poflr_reply_config(i);
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 
             HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
+                POF_DEBUG("@poflr_reply_table_resource");
                 ret = poflr_reply_table_resource(i,lr);
                 POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
             }
@@ -251,11 +253,11 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,i
             if (role_ptr->role==2){
             	POF_DEBUG_CPRINT(1,GREEN,">>\nThis request role is master ");
             	for (j=0;j<n_controller;j++){
-            		if (pofsc_conn_desc[j].role==2){
-            			pofsc_conn_desc[j].role=1;
+            		if (pofsc_conn_desc[j].role==ROLE_MASTER){
+            			pofsc_conn_desc[j].role=ROLE_EQUAL;
             		}
             	}
-            	pofsc_conn_desc[i].role= 2;
+            	pofsc_conn_desc[i].role= ROLE_MASTER;
 
             	master_controller= i;
 
@@ -264,10 +266,10 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,i
             	}
             	POF_DEBUG_CPRINT(1,GREEN,">>the role of controller:%s is master ",pofsc_conn_desc[i].controller_ip);
             }
-            else if(role_ptr->role==1){
+            else if(role_ptr->role==ROLE_EQUAL){
             	POF_DEBUG_CPRINT(1,GREEN,">>\nThis request role is standby");
-            	if (pofsc_conn_desc[i].role==2){master_controller=-1;}
-            	pofsc_conn_desc[i].role=1;
+            	if (pofsc_conn_desc[i].role==ROLE_MASTER){master_controller=-1;}
+            	pofsc_conn_desc[i].role=ROLE_EQUAL;
             	if(POF_OK != pofec_reply_msg(i,POFT_ROLE_REPLY, g_recv_xid,sizeof(pof_role_reply),(uint8_t *)&role_reply)){
             	     POF_ERROR_HANDLE_RETURN_UPWARD(POFET_ROLE_REQUEST_FAILED,POF_WRITE_MSG_QUEUE_FAILURE,g_recv_xid,i);
             	}

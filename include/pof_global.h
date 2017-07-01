@@ -725,7 +725,12 @@ typedef struct pof_flow_table{
     char table_name[POF_NAME_MAX_LENGTH];
 	pof_match match[POF_MAX_MATCH_FIELD_NUM];
 }pof_flow_table;        //size = 16 + 64 + 8*8 = 144
-
+enum PofControllerRole{
+	ROLE_NOCHANGE,
+	ROLE_EQUAL,
+	ROLE_MASTER,
+	ROLE_SLAVE
+};
 typedef struct pof_role_request{
     uint8_t role;
 }pof_role_request;

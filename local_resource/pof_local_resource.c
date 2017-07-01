@@ -197,11 +197,13 @@ uint32_t  poflr_reply_feature_resource(int controller,struct pof_local_resource 
  * Discribe: This function will reply the table resource to the Controller.
  ***********************************************************************/
 uint32_t  poflr_reply_table_resource(int controller,struct pof_local_resource *lr){
+    POF_DEBUG("@pofec_reply_msg");
     pof_flow_table_resource flow_table_resource = poflr_table_resource_desc;
 #ifdef POF_MULTIPLE_SLOTS
     flow_table_resource.slotID = lr->slotID;
 #endif // POF_MULTIPLE_SLOTS
     pof_HtoN_transfer_flow_table_resource(&flow_table_resource);
+
 
     if(POF_OK != pofec_reply_msg(controller,POFT_RESOURCE_REPORT, g_recv_xid, sizeof(pof_flow_table_resource), (uint8_t *)&flow_table_resource)){
         POF_ERROR_HANDLE_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_WRITE_MSG_QUEUE_FAILURE);
@@ -268,6 +270,7 @@ poflr_reply_queryall(struct pof_local_resource *lr,int controller)
  * Discribe: This function will reply the port resource.
  ***********************************************************************/
 uint32_t  poflr_reply_port_resource(int i,struct pof_local_resource *lr){
+    POF_DEBUG("@poflr_reply_port_resource");
     struct portInfo *port, *next;
     /* Traverse all ports. */
     HMAP_NODES_IN_STRUCT_TRAVERSE(port, next, pofIndexNode, lr->portPofIndexMap){
