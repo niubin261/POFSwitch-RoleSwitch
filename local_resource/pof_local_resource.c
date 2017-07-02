@@ -304,6 +304,7 @@ uint32_t poflr_clear_resource(struct pof_local_resource *lr){
     return POF_OK;
 }
 
+
 /***********************************************************************
  * Initialize the local resource.
  * Form:     uint32_t pof_localresource_init()
