@@ -61,7 +61,8 @@ int n_controller=0;
 int controller_index=0;
 int master_controller=-1;
 uint8_t local_port_index=0;
-
+/*number of connected controllers*/
+int connected_controller=0;
 /* The max retry time of cnnection. */
 uint32_t pofsc_conn_max_retry = POF_CONNECTION_MAX_RETRY_TIME;
 
@@ -324,9 +325,9 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                         POF_RECV_BUF_MAX_SIZE, &total_len, dp,i);
                 if(ret == POF_OK){
                     POF_DEBUG_CPRINT_FL(1,GREEN,">>Recevie HELLO packet SUC!");
-                    HMAP_NODES_IN_STRUCT_TRAVERSE(lr, lrNext, slotNode, dp->slotMap){
-					    poflr_clear_resource(lr);
-                    }
+//                    HMAP_NODES_IN_STRUCT_TRAVERSE(lr, lrNext, slotNode, dp->slotMap){
+//					    poflr_clear_resource(lr);
+//                    }
                     conn_desc_ptr->conn_status.state = POFCS_REQUEST_FEATURE;
                 }else{
                     POF_ERROR_CPRINT_FL("Recv HELLO FAILE!");
@@ -568,11 +569,13 @@ static uint32_t pofsc_main_task(void *arg_ptr){
                     process_len = 0;
                 }
 
-				sleep(1);
+				//sleep(1);
 				if (n_controller==1){
-				    conn_desc_ptr->role=2;}
+				    conn_desc_ptr->role=2;
+                }
 				else{
-					conn_desc_ptr->role=1;}
+					conn_desc_ptr->role=1;
+                }
                 conn_desc_ptr->conn_status.state = POFCS_CHANNEL_RUN;
 				POF_DEBUG_CPRINT(1,GREEN,">>Connect to POFController successfully!\n");
 
@@ -915,6 +918,11 @@ static uint32_t pofsc_recv(int socket_fd, char* buf, int buflen, int* plen, stru
 
         POF_ERROR_CPRINT_FL("closed socket fd!");
         close(socket_fd);
+        if(n_controller>0){
+
+            n_controller--;
+        }
+        POF_DEBUG("read--n_controller=%d\n",n_controller);
         pofsc_performance_after_ctrl_disconn(dp,i);
         return (POF_RECEIVE_MSG_FAILURE);
     }
@@ -960,6 +968,11 @@ static uint32_t pofsc_send(int socket_fd, char* buf, int len, struct pof_datapat
     if ((ret = write(socket_fd, (char *)buf, len) == -1)){
         POF_ERROR_CPRINT_FL("Socket write ERROR!");
         close(socket_fd);
+        if(n_controller>0){
+            n_controller--;
+
+        }
+        POF_DEBUG("send--n_controller=%d\n",n_controller);
         pofsc_performance_after_ctrl_disconn(dp,i);
         return (POF_SEND_MSG_FAILURE);
     }
@@ -1096,6 +1109,7 @@ uint32_t pofsc_set_controller_ip(char *ip_str){
 	    }
 	    n_controller=i+1;
         }
+    POF_DEBUG("pofsc_set_controller_ip--n_controller=%d\n",n_controller);
 	return POF_OK;
 }
 
@@ -1226,18 +1240,30 @@ void terminate_handler(){
 }
 
 static uint32_t pofsc_performance_after_ctrl_disconn(struct pof_datapath *dp,int i){
+    POF_DEBUG("pofsc_performance_after_ctrl_disconn--n_controller=%d\n",n_controller);
+
     struct pof_local_resource *lr, *lrNext;
 #if (POF_PERFORM_AFTER_CTRL_DISCONN == POF_AFTER_CTRL_DISCONN_SHUT_DOWN)
     terminate_handler();
 #elif (POF_PERFORM_AFTER_CTRL_DISCONN == POF_AFTER_CTRL_DISCONN_RECONN)
+
     pofsc_conn_desc[i].conn_status.state = POFCS_CHANNEL_INVALID;
-    if (pofsc_conn_desc[i].role==2){ master_controller = -1;}
-    pofsc_conn_desc[i].role = 3;
-	if(pof_auto_clear()){
-        HMAP_NODES_IN_STRUCT_TRAVERSE(lr, lrNext, slotNode, dp->slotMap){
+    if (pofsc_conn_desc[i].role==ROLE_MASTER){
+        master_controller = -1;
+    }
+    pofsc_conn_desc[i].role = ROLE_SLAVE;
+    if (pofsc_conn_desc[i].role==ROLE_EQUAL){
+        pofsc_conn_desc[i].role==ROLE_SLAVE;
+    }
+     if(n_controller==0){
+        if(pof_auto_clear()){
+            POF_DEBUG("@pofsc_performance_after_ctrl_disconn--n_controller=%d\n",n_controller);
+            HMAP_NODES_IN_STRUCT_TRAVERSE(lr, lrNext, slotNode, dp->slotMap){
 		    poflr_clear_resource(lr);
-        }
-	}
+            }
+	    }
+    }
+
 #endif // POF_PERFORM_AFTER_CTRL_DISCONN
     return POF_OK;
 }

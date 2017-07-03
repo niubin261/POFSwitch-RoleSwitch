@@ -109,7 +109,7 @@ extern int n_controller;
 extern int controller_index;
 extern pthread_mutex_t mutex;
 extern int master_controller;
-
+extern int connected_controller;
 extern uint32_t pof_set_init_config(int argc, char *argv[], struct pof_datapath *);
 extern uint32_t pof_auto_clear();
 extern uint32_t pofsc_set_controller_ip(char *ip_str);

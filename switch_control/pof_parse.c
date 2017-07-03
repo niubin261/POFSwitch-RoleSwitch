@@ -101,10 +101,12 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,i
             break;
 
         case POFT_GET_CONFIG_REQUEST:
+            POF_DEBUG("@POFT_GET_CONFIG_REQUEST\n");
             ret = poflr_reply_config(i);
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 
             HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
+                POF_DEBUG("@poflr_reply_table_resource");
                 ret = poflr_reply_table_resource(i,lr);
                 POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
             }
@@ -191,7 +193,7 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,i
         case POFT_TABLE_MOD:
             table_ptr = (pof_flow_table*)(msg_ptr + sizeof(pof_header));
             pof_NtoH_transfer_flow_table(table_ptr);
-            if (pofsc_conn_desc[i].role !=2) break;
+            if (pofsc_conn_desc[i].role !=ROLE_MASTER) break;
             if(table_ptr->command == POFTC_ADD){
                 HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
                     ret = poflr_create_flow_table(i,                            \
@@ -218,7 +220,7 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,i
         case POFT_FLOW_MOD:
             flow_ptr = (pof_flow_entry*)(msg_ptr + sizeof(pof_header));
             pof_NtoH_transfer_flow_entry(flow_ptr);
-            if (pofsc_conn_desc[i].role !=2) break;
+            if (pofsc_conn_desc[i].role !=ROLE_MASTER) break;
             if(flow_ptr->command == POFFC_ADD){
                 HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
                     ret = poflr_add_flow_entry(flow_ptr, lr,i);
@@ -242,20 +244,21 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,i
 
         case POFT_ROLE_REQUEST:
 
+
             role_ptr =(pof_role_request *)(msg_ptr + sizeof(pof_header));
             POF_DEBUG_CPRINT(1,GREEN,">>\n**********This is role request message,the request role is %x",role_ptr->role);
             //pof_NtoH_transfer_role(role_ptr);
             POF_DEBUG_CPRINT(1,GREEN,">>\n##########This is role request message,the request role is %d",role_ptr->role);
             role_reply.role = role_ptr->role;
             //pof_HtoN_transfer_role(&role_reply);
-            if (role_ptr->role==2){
+            if (role_ptr->role==ROLE_MASTER){
             	POF_DEBUG_CPRINT(1,GREEN,">>\nThis request role is master ");
             	for (j=0;j<n_controller;j++){
-            		if (pofsc_conn_desc[j].role==2){
-            			pofsc_conn_desc[j].role=1;
+            		if (pofsc_conn_desc[j].role==ROLE_MASTER){
+            			pofsc_conn_desc[j].role=ROLE_SLAVE;
             		}
             	}
-            	pofsc_conn_desc[i].role= 2;
+            	pofsc_conn_desc[i].role= ROLE_MASTER;
 
             	master_controller= i;
 
@@ -264,10 +267,10 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,i
             	}
             	POF_DEBUG_CPRINT(1,GREEN,">>the role of controller:%s is master ",pofsc_conn_desc[i].controller_ip);
             }
-            else if(role_ptr->role==1){
+            else if(role_ptr->role==ROLE_EQUAL){
             	POF_DEBUG_CPRINT(1,GREEN,">>\nThis request role is standby");
-            	if (pofsc_conn_desc[i].role==2){master_controller=-1;}
-            	pofsc_conn_desc[i].role=1;
+            	if (pofsc_conn_desc[i].role==ROLE_MASTER){master_controller=-1;}
+            	pofsc_conn_desc[i].role=ROLE_EQUAL;
             	if(POF_OK != pofec_reply_msg(i,POFT_ROLE_REPLY, g_recv_xid,sizeof(pof_role_reply),(uint8_t *)&role_reply)){
             	     POF_ERROR_HANDLE_RETURN_UPWARD(POFET_ROLE_REQUEST_FAILED,POF_WRITE_MSG_QUEUE_FAILURE,g_recv_xid,i);
             	}
@@ -280,7 +283,7 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,i
         /*add by wenjian 2015/12/01*/
         case POFT_PACKET_OUT:
          //first move the pointer to the packet_out from header
-         if (pofsc_conn_desc[i].role !=2) break;
+         if (pofsc_conn_desc[i].role !=ROLE_MASTER) break;
          packet_out=(pof_packet_out*)(msg_ptr+sizeof(pof_header));
          //take transfer from n to h
          pof_NtoH_transfer_packet_out(packet_out);
