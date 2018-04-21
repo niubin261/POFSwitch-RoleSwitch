@@ -172,7 +172,7 @@ openPort(struct portInfo * port)
 	struct   sockaddr_ll sockadr = {0}, from = {0};
 	int      sock;
 	int      ret;
-	if((sock = socket(AF_PACKET, SOCK_RAW, POF_HTONS(ETH_P_ALL))) == -1){
+	if((sock = socket(PF_PACKET, SOCK_RAW, POF_HTONS(ETH_P_ALL))) == -1){
 	        POF_ERROR_HANDLE_NO_RETURN_NO_UPWARD(POFET_SOFTWARE_FAILED, POF_CREATE_SOCKET_FAILURE);
 	        /* Delay 0.1s to send error message upward to the Controller. */
 	        pofbf_task_delay(100);

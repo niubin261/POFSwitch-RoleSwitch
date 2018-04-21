@@ -760,7 +760,6 @@ static uint32_t pofsc_echo_timer(uint32_t timer_id, int arg){
             /* Build echo message. */
             len = sizeof(pof_header);
             pofsc_build_header(&head, POFT_ECHO_REQUEST, len, g_upward_xid++);
-            POF_DEBUG_CPRINT_FL(1,BLUE, ">>the controller index is %d",controller_index);
             /* Write error message into queue for sending. */
             ret = pofbf_queue_write(pofsc_send_q_id[controller_index], (char*)&head, len, POF_WAIT_FOREVER);
             if(ret != POF_OK){

@@ -1,0 +1,1 @@
+{"fwd_table":{"match":{"ipv4.srcAddr":{"value":"10.0.0.1/20"},"ipv4.dstAddr":{"value":"10.0.0.2/8"}},"name":"fwd","action":{"data":{"port":{"vaule":"v0.0"}},"type":"forward_act"}}}

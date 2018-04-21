@@ -32,9 +32,349 @@
 #include "../include/pof_log_print.h"
 #include "../include/pof_datapath.h"
 #include "../include/pof_hmap.h"
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <stddef.h>//size_t
+#include <string.h>
+#include "cjson/cJSON.h"
 /* Xid in OpenFlow header received from Controller. */
+
 uint32_t g_recv_xid = POF_INITIAL_XID;
+
+uint32_t port_pos[LEN] = {0,1,2,3};
+
+const char* port_name[LEN] = {"v0.0","v0.1","v0.2","v0.3"};
+
+uint32_t eth_pos[LEN] = {0,48,208,240};
+
+
+uint8_t len[4] = {3,1,12,16};
+
+const char* eth_name[LEN] = {"eth.dst","eth.src","ipv4.srcAddr","ipv4.dstAddr"};
+const char* cmd_name[7] = {"add","edit","edit_strict","delete","delete_strict","list","list-result"};
+void pof_send_rule_to_nic(pof_flow_entry* flow_entry,cJSON**json,uint8_t cmd){
+    uint8_t table_id = flow_entry->table_id;
+    uint16_t priority = flow_entry->priority;
+
+
+    char* buf_match = cJSON_PrintUnformatted(*json);
+    char* buf_action = cJSON_PrintUnformatted(*(json + 1));
+    char *pof_nic_cli = (char*)malloc(sizeof(char)*2048);
+    memset((void*)pof_nic_cli,0,2048);
+    if(!buf_action || !buf_match) {
+        POF_ERROR_CPRINT("the json is NULL exit the task");
+        exit(0);
+    }
+
+
+    char* filename_match = "/home/niubin/POFSwitch-RoleSwitch/match.json";
+    char* filename_action = "/home/niubin/POFSwitch_RoleSwitch/action.json";
+    FILE* fp_match = fopen(filename_match,"w+");
+    FILE* fp_action = fopen(filename_action,"w+");
+#define CLI "sudo python /home/niubin/POFSwitch-RoleSwitch/client/sdk6_rte_cli.py tables -r fwd"
+
+    strcat(pof_nic_cli,CLI);
+    strcat(pof_nic_cli," -m ");
+    strcat(pof_nic_cli,"'");
+    strcat(pof_nic_cli,buf_match);
+    strcat(pof_nic_cli,"'");
+    strcat(pof_nic_cli," -a ");
+    strcat(pof_nic_cli,"'");
+    strcat(pof_nic_cli,buf_action);
+    strcat(pof_nic_cli,"'");
+
+
+
+    char table_id_ptr[8];
+
+    sprintf(table_id_ptr,"%d",table_id);
+
+    strcat(pof_nic_cli," -i ");
+
+    strcat(pof_nic_cli,table_id_ptr);
+    char priority_ptr[8];
+    switch (cmd) {
+        case POFFC_ADD://POFFC_ADD is add rules
+
+            sprintf(priority_ptr,"%d",priority);
+            strcat(pof_nic_cli," -p ");
+            strcat(pof_nic_cli,priority_ptr);
+            strcat(pof_nic_cli," add");
+            break;
+        case POFFC_DELETE://POFFC_DELETE is delete rules
+            strcat(pof_nic_cli," delete");
+            break;
+        case POFFC_MODIFY://
+
+            sprintf(priority_ptr,"%d",priority);
+            strcat(pof_nic_cli," -p ");
+            strcat(pof_nic_cli,priority_ptr);
+            strcat(pof_nic_cli," edit");
+            break;
+        default: //default is list-rules
+            //Fixme TODO
+            break;
+    }
+
+    POF_DEBUG_CPRINT_FL(1,GREEN,"pof_nic_cli  %s\n",pof_nic_cli);
+//    if (system(pof_nic_cli)){
+//        POF_DEBUG("system call add_rule to smartnic\n");
+//    }
+//    else {
+//        POF_DEBUG("system call error \n");
+//    }
+
+    free(buf_action);
+    free(buf_match);
+    free(pof_nic_cli);
+    pof_nic_cli = NULL;
+    if (json) {
+
+        cJSON_free(*(json + 1));
+    }
+    *(json + 1) = NULL;
+}
+
+void pof_add_flow_to_nic(pof_flow_entry* flow_ptr,uint8_t cmd){
+    uint8_t i;
+    uint8_t j;
+
+    uint8_t match_field_num = flow_ptr->match_field_num;
+    struct pof_match_x* match_x = flow_ptr->match;
+    struct pof_match_x* match_x_tmp;
+    cJSON**match_action_root = (cJSON**)malloc(sizeof(cJSON*)*2);
+
+    cJSON* root_match = NULL;
+    root_match = cJSON_CreateObject();
+
+    //for debug
+    for (i = 0; i < match_field_num; i++) {
+        match_x_tmp = (match_x + i);
+        POF_DEBUG_CPRINT_FL(1,GREEN,"len = %d",match_x_tmp->len);
+        POF_DEBUG_CPRINT_FL(1,GREEN,"offset = %d",match_x_tmp->offset);
+
+        for (j = 0;j < match_x_tmp->len / 8; j++) {
+            POF_DEBUG_CPRINT_FL(1,GREEN,"-------match val = %d-------\n",(match_x_tmp->value)[j]);
+        }
+
+        for (j = 0;j < match_x_tmp->len / 8; j++ ){
+            POF_DEBUG_CPRINT_FL(1,GREEN,"-------match mask = %d------\n",(match_x_tmp->mask)[j]);
+        }
+    }
+
+    for (i = 0;i < match_field_num; i++) {
+        char* k = NULL;
+        char v[128] = {};
+        char t[64] = {};
+
+        match_x_tmp = (match_x + i);
+        k = to_name(eth_name,eth_pos,match_x_tmp->offset);
+        to_string(match_x_tmp->value, match_x_tmp->len /(uint16_t) 8, v);
+
+        uint8_t mask_bit = 0;
+        mask_bit += mask_bit_count(match_x_tmp->mask, match_x_tmp->len / (uint16_t) 8);
+        sprintf(t,"%d",mask_bit);
+        strcat(v,"/");
+        strcat(v,t);
+        cJSON* match_k;
+        cJSON* match_v;
+        cJSON_AddItemToObject(root_match,k,match_k = cJSON_CreateObject());
+        cJSON_AddStringToObject(match_k,"value",v);
+    }
+
+    struct pof_instruction* instructions_ptr = flow_ptr->instruction;
+    uint8_t instruction_num = flow_ptr->instruction_num;
+    struct pof_action* actions_ptr = NULL;
+    struct pof_action* action_ptr = NULL;
+    struct pof_instruction_apply_actions* pof_instruction_apply_actions_ptr = NULL;
+    struct pof_instruction_goto_table* pof_instruction_goto_table_ptr = NULL;
+
+    POF_DEBUG_CPRINT_FL(1,GREEN,"ins num = %d\n",instruction_num);
+    uint32_t* port = NULL;
+
+    uint16_t* add_tag_pos = NULL;
+    uint32_t* add_tag_len = NULL;
+    uint8_t* add_tag_value = NULL;
+    uint16_t* del_tag_pos = NULL;
+    uint32_t* del_tag_len = NULL;
+    uint8_t add_field_value_bit[64] = {0};
+    char s_field[64] = {'0','x'};
+    char s_field_temp[8] = {0};
+
+
+    uint8_t m = 0;
+    for (i = 0; i < instruction_num; i++){
+        POF_DEBUG_CPRINT_FL(1,GREEN,"instruction_num : %d\n",i);
+        switch (instructions_ptr[i].type) {
+            case POFIT_APPLY_ACTIONS:
+                pof_instruction_apply_actions_ptr = (void*)instructions_ptr->instruction_data;
+                POF_DEBUG_CPRINT_FL(1,GREEN,"instruction len = %d\n",instructions_ptr[i].len);
+
+                //POF_MAX_INSTRUCTION_LENGTH = 48*6 + 8 = 296
+                actions_ptr = pof_instruction_apply_actions_ptr->action;
+                for (j = 0; j < pof_instruction_apply_actions_ptr->action_num; j++) {
+
+                    cJSON* root_action = NULL;
+                    root_action = cJSON_CreateObject();
+                    action_ptr = (actions_ptr + j);
+                    cJSON* jfield;
+                    cJSON* jfield_add_field;
+                    cJSON* jport;
+                    cJSON* jdata_output;
+                    cJSON* jfield_del_field;
+
+                    POF_DEBUG_CPRINT_FL(1,GREEN,"action type = %d",action_ptr->type);
+                    POF_DEBUG_CPRINT_FL(1,GREEN,"action len = %d",action_ptr->len);
+                    switch (action_ptr->type) {
+                        case POFAT_OUTPUT:
+                        {
+                            struct pof_action_output* pof_action_output_ptr = NULL;
+                            pof_action_output_ptr = (void*)action_ptr->action_data;
+                            port = &(pof_action_output_ptr->outputPortId);
+                            POF_DEBUG_CPRINT_FL(1,GREEN,"potid = %d\n",*port);
+                            POF_DEBUG_CPRINT_FL(1,GREEN,"portname = %s\n",to_name(port_name,port_pos,*(port)));
+
+                            cJSON_AddItemToObject(root_action,"data",jdata_output = cJSON_CreateObject());
+                            cJSON_AddItemToObject(jdata_output,"port",jport = cJSON_CreateObject());
+                            cJSON_AddStringToObject(jport,"vaule",to_name(port_name,port_pos,*(port)));
+                            cJSON_AddStringToObject(root_action,"type","forward_act");
+                        }
+
+                            break;
+                        case POFAT_SET_FIELD:
+                            break;
+                        case POFAT_ADD_FIELD:
+                        {
+                            struct pof_action_add_field* pof_action_add_field_ptr = NULL;
+                            pof_action_add_field_ptr = (void*)action_ptr->action_data;
+                            add_tag_pos = &(pof_action_add_field_ptr->tag_pos);
+                            add_tag_value = (uint8_t*)&(pof_action_add_field_ptr->tag_value);
+                            add_tag_len = &(pof_action_add_field_ptr->tag_len);
+
+                            for (m = 0 ;m < *(add_tag_len) / 8;m ++){
+                                sprintf(s_field_temp,"%2.2x",*(add_tag_value + (m)));
+                                strcat(s_field,s_field_temp);
+
+                            }
+
+                            POF_DEBUG_CPRINT_FL(1,GREEN,"s_field = %s\n",s_field);
+                            cJSON_AddItemToObject(root_action,"data",jfield_add_field = cJSON_CreateObject());
+                            cJSON_AddItemToObject(jfield_add_field,"field",jfield = cJSON_CreateObject());
+                            cJSON_AddStringToObject(jfield,"vaule",s_field);
+                            cJSON_AddStringToObject(root_action,"type","add_field");
+                        }
+
+                            break;
+                        case POFAT_DROP:
+                            cJSON_AddStringToObject(root_action,"type","drop_act");
+                            break;
+                        case POFAT_DELETE_FIELD:
+                        {
+                            struct pof_action_delete_field* pof_action_del_field_ptr  = NULL;
+                            (pof_action_del_field_ptr) = (void*)action_ptr->action_data;
+                            del_tag_pos = &(pof_action_del_field_ptr->tag_pos);
+                            del_tag_len = &(pof_action_del_field_ptr->tag_len);
+                            cJSON_AddItemToObject(root_action,"data",jfield_del_field = cJSON_CreateObject());
+                            cJSON_AddItemToObject(jfield_del_field,"field",jfield = cJSON_CreateObject());
+                            cJSON_AddStringToObject(root_action,"type","del_field");
+                        }
+
+                            break;
+                        case POFAT_CALCULATE_CHECKSUM:
+
+                            break;
+                        case POFAT_MODIFY_FIELD:
+                            break;
+                        case POFAT_PACKET_IN:
+                            //TODO do not used in nic
+                        default:
+                            break;
+
+                    }
+                    if (root_action && root_match) {
+                        POF_DEBUG_CPRINT_FL(1,GREEN,"match action json = \n %s + %s\n",
+                                            cJSON_Print(root_match),cJSON_Print(root_action));
+                    }
+                    *match_action_root = root_match;
+                    *(match_action_root + 1) = root_action;
+                    pof_send_rule_to_nic(flow_ptr,match_action_root,cmd);
+
+                }
+                break;
+            case POFIT_WRITE_ACTIONS:
+                //TODO do not used in POF
+                break;
+            case POFIT_CLEAR_ACTIONS:
+                //TODO do not used in POF
+                break;
+            case POFIT_GOTO_DIRECT_TABLE:
+
+                break;
+            case POFIT_GOTO_TABLE:
+            {
+                pof_instruction_goto_table_ptr = (void*)instructions_ptr->instruction_data;
+                char next_table_id_str[64] = {0};
+                POF_DEBUG_CPRINT_FL(1,GREEN,"GOTO_TABLE\n");
+                cJSON*root_action = NULL;
+                root_action = cJSON_CreateObject();
+                uint8_t next_table_id = 0;
+
+                next_table_id = pof_instruction_goto_table_ptr->next_table_id;
+                cJSON* jnext_table_id = NULL;
+                cJSON_AddItemToObject(root_action,"data",jnext_table_id = cJSON_CreateObject());
+
+                sprintf(next_table_id_str,"%d",next_table_id);
+                cJSON_AddStringToObject(jnext_table_id,"value",next_table_id_str);
+                cJSON_AddStringToObject(root_action,"type","modify_flag");
+                if (root_action && root_match) {
+                    POF_DEBUG_CPRINT_FL(1,GREEN,"match action json = \n %s + %s\n",
+                                        cJSON_Print(root_match),cJSON_Print(root_action));
+                }
+                *match_action_root = root_match;
+                *(match_action_root + 1) = root_action;
+                pof_send_rule_to_nic(flow_ptr,match_action_root,cmd);
+            }
+
+                break;
+            case POFIT_METER:
+                break;
+            case POFIT_WRITE_METADATA:
+                break;
+            case POFIT_WRITE_METADATA_FROM_PACKET:
+                break;
+
+            default:
+                break;
+        }
+
+
+    }
+    if (match_action_root) {
+        cJSON_free(*(match_action_root ));
+        free(match_action_root);
+    }
+
+    return ;
+}
+
+
+
+void pof_send_msg_to_nic(char *msg_ptr) {
+    pof_flow_entry    *flow_ptr;
+    flow_ptr = (pof_flow_entry*)(msg_ptr + sizeof(pof_header));
+    struct nic_match* nic_match_ptr = NULL;
+    //pof_NtoH_transfer_flow_entry(flow_ptr);
+
+    if(flow_ptr->command == POFFC_ADD){
+        pof_add_flow_to_nic(flow_ptr,POFFC_ADD);
+    }else if(flow_ptr->command == POFFC_DELETE){
+        pof_add_flow_to_nic(flow_ptr,POFFC_DELETE);
+    }else if(flow_ptr->command == POFFC_MODIFY){
+        pof_add_flow_to_nic(flow_ptr,POFFC_MODIFY);
+    }else{
+    }
+
+}
 
 /*******************************************************************************
  * Parse the OpenFlow message received from the Controller.
@@ -101,12 +441,12 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,i
             break;
 
         case POFT_GET_CONFIG_REQUEST:
-            POF_DEBUG("@POFT_GET_CONFIG_REQUEST\n");
+            POF_DEBUG_CPRINT_FL(1,GREEN,"@POFT_GET_CONFIG_REQUEST\n");
             ret = poflr_reply_config(i);
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 
             HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
-                POF_DEBUG("@poflr_reply_table_resource");
+                POF_DEBUG_CPRINT_FL(1,GREEN,"@poflr_reply_table_resource\n");
                 ret = poflr_reply_table_resource(i,lr);
                 POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
             }
@@ -223,7 +563,9 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,i
             if (pofsc_conn_desc[i].role !=ROLE_MASTER) break;
             if(flow_ptr->command == POFFC_ADD){
                 HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
+
                     ret = poflr_add_flow_entry(flow_ptr, lr,i);
+
                 }
             }else if(flow_ptr->command == POFFC_DELETE){
                 HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap){
@@ -238,7 +580,7 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,i
             }
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 //            usr_cmd_tables();
-
+            pof_send_msg_to_nic(msg_ptr);
             break;
 
 

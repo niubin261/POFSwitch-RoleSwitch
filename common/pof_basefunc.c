@@ -438,3 +438,74 @@ pofbf_split_str(char *strSrc, const char *split, char *strDst[], uint32_t count)
     }
     return;
 }
+
+void field_bit_cnt(const uint8_t *value, uint8_t *result_cnt, uint8_t pos_i){
+    uint8_t base = pos_i * 8 ;
+    uint8_t i ;
+    uint8_t j;
+    uint8_t value_temp = 0;
+    for (i = base,j = 0; i < base + 8 && j < 8; i++,j++ ) {
+       // result_cnt[i] = ((*value) & (1 << j));
+        result_cnt[i] = (value_temp >> j) & 1;
+    }
+
+}
+uint64_t in_bits(const uint64_t *value,uint16_t pos,uint32_t len,uint32_t *tag_len){
+    pos = *(tag_len) - pos + 1;
+    uint8_t i = 0;
+    uint64_t mask = 0;
+
+    for (;i < len; i++) {
+        mask |= (1 << (pos - i));
+    }
+    uint64_t result =( *(value) & mask ) >> (pos - len + 1);
+
+    return result;
+
+}
+char* to_name(const char** name, const uint32_t* Id, uint32_t id) {
+    uint8_t i = 0;
+    for (i = 0; i < LEN; i++){
+        if (Id[i] == id)
+            return name[i];
+    }
+    return NULL;
+}
+
+char* to_string(const uint8_t* arr,uint16_t len, char* ret){
+
+
+    char tmp[32];
+    uint16_t i = 0;
+    for (;i < len - 1; i++) {
+        sprintf(tmp,"%d",arr[i]);
+        strcat(ret,tmp);
+        strcat(ret,".");
+
+    }
+    sprintf(tmp,"%d",arr[len - 1]);
+    strcat(ret,tmp);
+    POF_DEBUG("to_string %s\n",ret);
+    return ret;
+}
+uint8_t mask_bit_count(uint8_t *num, uint16_t len){
+    uint8_t i = 0;
+    uint8_t cnt = 0;
+    for (;i < len; i++ ){
+        while(num[i] > 0){
+            if((num[i] & 1) == 1)
+                cnt ++;
+            num[i] >>= 1;
+
+        }
+    }
+    return cnt;
+}
+uint8_t bits_to_uint8_t(uint8_t*result_cnt,uint8_t pos,uint8_t len){
+    uint8_t result_uint8_t = 0;
+    uint8_t i = 0;
+    for (;i < len; i++){
+        result_uint8_t += POF_MOVE_BIT_LEFT(*(result_cnt + pos + i),1);
+    }
+    return result_uint8_t;
+}

@@ -129,6 +129,8 @@
 #define POF_MULTIPLE_SLOTS (1)
 #define POF_SHT_VXLAN (1)
 #endif // POFSWITCH_VERSION_NO
+#define LEN 4
+
 
 typedef enum pof_slot_id {
     POFSID_ALL = 0xFFFF, 
@@ -1782,6 +1784,11 @@ extern void pofbf_copy_bit(const uint8_t *data_ori, uint8_t *data_res, uint16_t 
 extern void pofbf_split_str(char *strSrc, const char *split, char *strDst[], uint32_t count);
 extern uint32_t pofsc_send_packet_upward(uint8_t *packet, uint32_t len);
 extern void terminate_handler();
-
+extern char* to_string(const uint8_t* arr,uint16_t len, char* ret);
+extern uint8_t mask_bit_count(uint8_t *num, uint16_t len);
+extern char* to_name(const char** name, const uint32_t* Id, uint32_t id);
+extern uint64_t in_bits(const uint64_t *value,uint16_t pos,uint32_t len,uint32_t* tag_len);
+extern void field_bit_cnt(const uint8_t *value, uint8_t *result_cnt, uint8_t pos_i);
+extern uint8_t bits_to_uint8_t(uint8_t*result_cnt,uint8_t pos,uint8_t len);
 #endif
 

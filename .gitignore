@@ -35,7 +35,7 @@
 *.Po
 .idea
 log
-
+*.log
 .settings
 
 cmake-build-debug
@@ -50,3 +50,7 @@ pofswitch
 log1
 log2
 pof_log1
+CMakeLists.txt
+*.pyc
+*.json
+test.*
