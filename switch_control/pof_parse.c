@@ -38,6 +38,8 @@
 #include <string.h>
 #include "cjson/cJSON.h"
 #include <stdbool.h>
+#include <assert.h>
+#include <regex.h>
 /* Xid in OpenFlow header received from Controller. */
 
 uint32_t g_recv_xid = POF_INITIAL_XID;
@@ -370,17 +372,52 @@ void pof_send_msg_to_nic(char *msg_ptr) {
     }
 
 }
-#define TABLE_FORMAT(TABLENAME,TYPE,MATCHNAMES)
 
+#define MAX_LINE_LENGTH 1024
+char *control_match(char *buf){
+    char *ret_ptr = NULL,*egress_control = NULL;
+    POF_DEBUG_CPRINT_FL(1,GREEN,"%s",buf);
+    const char *pattern = "apply*";
+    regmatch_t pmatch;
+    regex_t reg;
+    assert(regcomp(&reg, pattern, REG_EXTENDED | REG_NEWLINE) == 0);
+    int status = regexec(&reg, buf, 1, &pmatch, 0);
+
+    if (status == REG_NOMATCH){
+        return NULL;
+    } else if(pmatch.rm_so != -1){
+
+        ret_ptr = buf + pmatch.rm_so;
+
+    }
+    regfree(&reg);
+    return ret_ptr;
+
+}
 void create_table(char *table_name,uint8_t table_type,char **name,uint8_t names_size,bool ingress,bool egress){
     FILE *p4;
-    p4 = fopen("p4","a+");
+    p4 = fopen("p4","r");
     if (p4 == NULL) {
+        POF_ERROR_CPRINT(1,RED,"p4 file open failed");
         return;
     }
-    char *table = (char*)malloc(sizeof(char)*2048);
-    memset(table,0,2048);
-    table = strcat(table,"table fwd{\n\t");
+    char *p4_contents = (char*)malloc(sizeof(char)*100*MAX_LINE_LENGTH);
+    memset(p4_contents,0,MAX_LINE_LENGTH*100);
+    fseek(p4,0,SEEK_END);
+    uint64_t size = ftell(p4);
+    rewind(p4);
+    fread(p4_contents,1,size,p4);
+    char *insert_line_pos = strstr(p4_contents,"control");
+    if (insert_line_pos == NULL){
+        return;
+    }
+    char *buf_tmp = (char*)malloc(sizeof(char)*MAX_LINE_LENGTH*20);
+    memset(buf_tmp,0,MAX_LINE_LENGTH*10);
+    strcpy(buf_tmp,insert_line_pos);
+
+    char *table = (char*)malloc(sizeof(char)*MAX_LINE_LENGTH*10);
+    memset(table,0,MAX_LINE_LENGTH*10);
+    table = strcpy(table,"table fwd{\n\t");
     table = strcat(table,"reads{\n\t\t");
     uint8_t i = 0;
     for (;i < names_size; i++ ){
@@ -390,32 +427,70 @@ void create_table(char *table_name,uint8_t table_type,char **name,uint8_t names_
     table[strlen(table) - 1] = '\0';
     strcat(table,"}\n\t");
     strcat(table,"actions{\n\t\t");
-    for (;;){
+    for (i = 0;i < 0; i++){
+        //actions name
         break;
     }
     table[strlen(table) - 1] = '\0';
-    strcat(table,"}\n\t");
+    strcat(table,"}\n");
     strcat(table,"}\n");
     POF_DEBUG_CPRINT_FL(1,GREEN,"table is %s \n",table);
+    strcpy(insert_line_pos,table);
+    //apply table to control
+    //regexp match
+    char *ingress_control = NULL;
+    char *egress_control = NULL;
+    ingress_control = control_match(buf_tmp);
+    egress_control = control_match(ingress_control + 1);
+    if (ingress_control == NULL) {
+        POF_DEBUG_CPRINT(1,GREEN,"the ingress is NULL");
+        return ;
+    }
+    POF_DEBUG_CPRINT_FL(1,GREEN,"the ingress %c",*ingress_control);
+
+    char *buf_tmp_control = (char*)malloc(sizeof(char)*MAX_LINE_LENGTH*10);
+    if (ingress){
+        strcpy(buf_tmp_control,ingress_control);
+        strcpy(ingress_control,"apply{\n");
+        strcat(buf_tmp,buf_tmp_control);
+    } else {
+        strcpy(buf_tmp_control,egress_control);
+        strcpy(ingress_control,"apply\n");
+        strcat(buf_tmp,buf_tmp_control);
+    }
+
+    strcat(p4_contents,buf_tmp);
+    POF_DEBUG_CPRINT_FL(1,GREEN,"p4 is %s \n",p4_contents);
+
+    free(table);
+    free(buf_tmp);
+    free(buf_tmp_control);
+    free(p4_contents);
+    table = NULL;
+    buf_tmp = NULL;
+    buf_tmp_control = NULL;
+    p4_contents = NULL;
+    insert_line_pos = NULL;
+
     fclose(p4);
 
 }
 void pof_table_to_p4(void *msg_ptr){
 
-    POF_DEBUG_CPRINT_FL(1,GREEN,"pof_table_to_p4");
+    POF_DEBUG_CPRINT(1,GREEN,"pof_table_to_p4");
     struct pof_flow_table *table_ptr = (struct pof_flow_table*)(msg_ptr + sizeof(pof_header));
     uint8_t i = 0;
-    bool ingress = false;
+    bool ingress = true;
     bool egress = false;
     struct pof_match *pof_match_ptr;
     uint16_t offset = 0;
     uint16_t len = 0;
     char* table_name = NULL;
     uint8_t table_type = table_ptr->type;
-    char **names = (char**)malloc(sizeof(char*)*table_ptr->match_field_num);
+    char **names = (char**)malloc(sizeof(char*)*table_ptr->match_field_num) ;
     table_name = table_ptr->table_name;
 
-    for (;i < table_ptr->match_field_num;i ++){
+    for (i = 0;i < table_ptr->match_field_num;i++){
         pof_match_ptr = (table_ptr->match + i);
         offset = pof_match_ptr->offset;
         len = pof_match_ptr->len;
@@ -424,7 +499,7 @@ void pof_table_to_p4(void *msg_ptr){
 
     }
     create_table(table_name,table_type,names,table_ptr->match_field_num,ingress,egress);
-
+    free(names);
 }
 
 /*******************************************************************************
