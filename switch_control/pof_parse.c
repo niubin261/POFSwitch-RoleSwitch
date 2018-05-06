@@ -377,36 +377,38 @@ void pof_send_msg_to_nic(char *msg_ptr) {
 char *control_match(char *buf){
     char *ret_ptr = NULL,*egress_control = NULL;
     POF_DEBUG_CPRINT_FL(1,GREEN,"%s",buf);
-    const char *pattern = "apply*";
-    regmatch_t pmatch;
+    const char *pattern = "\n";
+    regmatch_t regmatch;
     regex_t reg;
     assert(regcomp(&reg, pattern, REG_EXTENDED | REG_NEWLINE) == 0);
-    int status = regexec(&reg, buf, 1, &pmatch, 0);
+    int status = regexec(&reg, buf, 1, &regmatch, 0);
 
     if (status == REG_NOMATCH){
         return NULL;
-    } else if(pmatch.rm_so != -1){
+    } else if(regmatch.rm_so != -1){
 
-        ret_ptr = buf + pmatch.rm_so;
+        ret_ptr = buf + regmatch.rm_so;
 
     }
     regfree(&reg);
-    return ret_ptr;
+    return ret_ptr + 1;
 
 }
 void create_table(char *table_name,uint8_t table_type,char **name,uint8_t names_size,bool ingress,bool egress){
     FILE *p4;
-    p4 = fopen("p4","r");
+    p4 = fopen("p4","r+");
     if (p4 == NULL) {
         POF_ERROR_CPRINT(1,RED,"p4 file open failed");
         return;
     }
     char *p4_contents = (char*)malloc(sizeof(char)*100*MAX_LINE_LENGTH);
     memset(p4_contents,0,MAX_LINE_LENGTH*100);
+
     fseek(p4,0,SEEK_END);
     uint64_t size = ftell(p4);
     rewind(p4);
-    fread(p4_contents,1,size,p4);
+    assert(fread(p4_contents,1,size,p4) != 0);
+
     char *insert_line_pos = strstr(p4_contents,"control");
     if (insert_line_pos == NULL){
         return;
@@ -416,19 +418,41 @@ void create_table(char *table_name,uint8_t table_type,char **name,uint8_t names_
     strcpy(buf_tmp,insert_line_pos);
 
     char *table = (char*)malloc(sizeof(char)*MAX_LINE_LENGTH*10);
+
     memset(table,0,MAX_LINE_LENGTH*10);
-    table = strcpy(table,"table fwd{\n\t");
+    table = strcpy(table,"table ");
+    table = strcat(table,table_name);
+
+
+    table = strcat(table,"{\n\t");
     table = strcat(table,"reads{\n\t\t");
     uint8_t i = 0;
     for (;i < names_size; i++ ){
         strcat(table,name[i]);
+        strcat(table,":");
+        switch (table_type){
+            case POF_MM_TABLE:
+                strcat(table,"lpm");
+                break;
+            case POF_LPM_TABLE:
+                strcat(table,"lpm");
+                break;
+            case POF_EM_TABLE:
+                strcat(table,"exact");
+                break;
+            default:
+                break;
+        }
+
         strcat(table,";\n\t\t");
     }
     table[strlen(table) - 1] = '\0';
     strcat(table,"}\n\t");
     strcat(table,"actions{\n\t\t");
+    strcat(table,"drop_act;\n\t\t");
     for (i = 0;i < 0; i++){
         //actions name
+
         break;
     }
     table[strlen(table) - 1] = '\0';
@@ -451,17 +475,22 @@ void create_table(char *table_name,uint8_t table_type,char **name,uint8_t names_
     char *buf_tmp_control = (char*)malloc(sizeof(char)*MAX_LINE_LENGTH*10);
     if (ingress){
         strcpy(buf_tmp_control,ingress_control);
-        strcpy(ingress_control,"apply{\n");
+        strcpy(ingress_control,"apply(");
+        strcat(ingress_control,table_name);
+        strcat(ingress_control,");\n");
         strcat(buf_tmp,buf_tmp_control);
     } else {
         strcpy(buf_tmp_control,egress_control);
-        strcpy(ingress_control,"apply\n");
+        strcpy(ingress_control,"apply(");
+        strcat(ingress_control,table_name);
+        strcat(ingress_control,")\n\t");
         strcat(buf_tmp,buf_tmp_control);
     }
 
     strcat(p4_contents,buf_tmp);
     POF_DEBUG_CPRINT_FL(1,GREEN,"p4 is %s \n",p4_contents);
-
+    rewind(p4);
+    assert(fwrite(p4_contents,1,strlen(p4_contents),p4) != 0);
     free(table);
     free(buf_tmp);
     free(buf_tmp_control);
@@ -471,16 +500,60 @@ void create_table(char *table_name,uint8_t table_type,char **name,uint8_t names_
     buf_tmp_control = NULL;
     p4_contents = NULL;
     insert_line_pos = NULL;
-
+    fflush(p4);
     fclose(p4);
 
+}
+void p4_compile(){
+    FILE *p4 = fopen("p4","r");
+    if (p4 == NULL) {
+        POF_ERROR_CPRINT(1,GREEN,"")
+    }
+    //p4 front-end compiler
+
+#define FRONT_END_COMPILER "sudo /opt/netronome/p4/bin/nfp4c -D NO_MULTICAST -o /tmp/p4.yml --source_info p4"
+    if (system(FRONT_END_COMPILER) != 0) {
+        POF_ERROR_CPRINT(1,GREEN,"p4 front-end compiler failed");
+        fclose(p4);
+        return ;
+    } else {
+        POF_DEBUG_CPRINT(1,GREEN,"p4 front-end compiler successfully");
+    }
+    //p4 back-end compiler
+#define BACK_END_COMPILER "sudo /opt/netronome/p4/bin/nfirc -o /tmp /tmp/p4.yml"
+    if (system(BACK_END_COMPILER) != 0) {
+        fclose(p4);
+        POF_ERROR_CPRINT(1,GREEN,"p4 back-end compiler failed");
+        return ;
+    } else {
+        POF_DEBUG_CPRINT(1,GREEN,"p4 back-end compiler successfully");
+    }
+    //building p4 applications
+#define P4_APP_BUILDING "sudo /opt/netronome/p4/bin/nfp4build -o /tmp/p4.nffw -4 p4"
+    if (system(P4_APP_BUILDING) != 0) {
+        POF_ERROR_CPRINT(1,GREEN,"p4 app build failed");
+        fclose(p4);
+        return ;
+    } else {
+        POF_DEBUG_CPRINT(1,GREEN,"p4 app build successfully");
+    }
+    //load .nffw into nic
+#define P4_LOAD_NFFW "sudo /opt/netronome/bin/nfw-nffw load -f /tmp/p4.nffw --ignore-debugger"
+    if (system(P4_LOAD_NFFW) != 0) {
+        POF_ERROR_CPRINT(1,GREEN,"p4 load fireware failed");
+        fclose(p4);
+        return;
+    } else {
+        POF_DEBUG_CPRINT(1,GREEN,"p4 load fireware successfully");
+    }
+    fclose(p4);
 }
 void pof_table_to_p4(void *msg_ptr){
 
     POF_DEBUG_CPRINT(1,GREEN,"pof_table_to_p4");
     struct pof_flow_table *table_ptr = (struct pof_flow_table*)(msg_ptr + sizeof(pof_header));
     uint8_t i = 0;
-    bool ingress = true;
+    bool ingress = false;
     bool egress = false;
     struct pof_match *pof_match_ptr;
     uint16_t offset = 0;
@@ -498,8 +571,10 @@ void pof_table_to_p4(void *msg_ptr){
         names[i] = to_name(eth_name,eth_pos,offset);
 
     }
+    ingress = *(table_ptr->pad);
     create_table(table_name,table_type,names,table_ptr->match_field_num,ingress,egress);
     free(names);
+    p4_compile();
 }
 
 /*******************************************************************************
@@ -753,7 +828,7 @@ uint32_t  pof_parse_msg_from_controller(char* msg_ptr, struct pof_datapath *dp,i
         /*add by wenjian 2015/12/01*/
         case POFT_PACKET_OUT:
          //first move the pointer to the packet_out from header
-         if (pofsc_conn_desc[i].role !=ROLE_MASTER) break;
+         if (pofsc_conn_desc[i].role != ROLE_MASTER) break;
          packet_out=(pof_packet_out*)(msg_ptr+sizeof(pof_header));
          //take transfer from n to h
          pof_NtoH_transfer_packet_out(packet_out);
