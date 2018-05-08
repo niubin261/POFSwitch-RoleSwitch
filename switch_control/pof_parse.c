@@ -40,6 +40,9 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <regex.h>
+#include <zconf.h>
+#include <fcntl.h>
+
 /* Xid in OpenFlow header received from Controller. */
 
 uint32_t g_recv_xid = POF_INITIAL_XID;
@@ -394,7 +397,7 @@ char *control_match(char *buf){
     return ret_ptr + 1;
 
 }
-void create_table(char *table_name,uint8_t table_type,char **name,uint8_t names_size,bool ingress,bool egress){
+void create_table(char *table_name,uint8_t table_type,char **name,uint8_t names_size,bool ingress,bool egress,uint8_t actions){
     FILE *p4;
     p4 = fopen("p4","r+");
     if (p4 == NULL) {
@@ -420,14 +423,12 @@ void create_table(char *table_name,uint8_t table_type,char **name,uint8_t names_
     char *table = (char*)malloc(sizeof(char)*MAX_LINE_LENGTH*10);
 
     memset(table,0,MAX_LINE_LENGTH*10);
-    table = strcpy(table,"table ");
-    table = strcat(table,table_name);
+
+    sprintf(table,"%stable %s{\n\treads{\n\t\t",table,table_name);
 
 
-    table = strcat(table,"{\n\t");
-    table = strcat(table,"reads{\n\t\t");
     uint8_t i = 0;
-    for (;i < names_size; i++ ){
+    for (;i < names_size; i++){
         strcat(table,name[i]);
         strcat(table,":");
         switch (table_type){
@@ -447,14 +448,18 @@ void create_table(char *table_name,uint8_t table_type,char **name,uint8_t names_
         strcat(table,";\n\t\t");
     }
     table[strlen(table) - 1] = '\0';
-    strcat(table,"}\n\t");
-    strcat(table,"actions{\n\t\t");
-    strcat(table,"drop_act;\n\t\t");
-    for (i = 0;i < 0; i++){
-        //actions name
 
-        break;
+    sprintf(table,"%s}\n\tactions{\n\t\t",table);
+
+
+    char *action_name[4] = {"drop_act;\n\t\t","fwd_act;\n\t\t","add_field;\n\t\t","set_field;\n\t\t"};
+    i = 0;
+    while (actions){
+        strcat(table,action_name[i]);
+        i++;
+        actions >>= 1;
     }
+
     table[strlen(table) - 1] = '\0';
     strcat(table,"}\n");
     strcat(table,"}\n");
@@ -505,6 +510,7 @@ void create_table(char *table_name,uint8_t table_type,char **name,uint8_t names_
 
 }
 void p4_compile(){
+
     FILE *p4 = fopen("p4","r");
     if (p4 == NULL) {
         POF_ERROR_CPRINT(1,GREEN,"")
@@ -546,6 +552,8 @@ void p4_compile(){
     } else {
         POF_DEBUG_CPRINT(1,GREEN,"p4 load fireware successfully");
     }
+
+
     fclose(p4);
 }
 void pof_table_to_p4(void *msg_ptr){
@@ -572,9 +580,23 @@ void pof_table_to_p4(void *msg_ptr){
 
     }
     ingress = *(table_ptr->pad);
-    create_table(table_name,table_type,names,table_ptr->match_field_num,ingress,egress);
+    uint8_t actions = *(table_ptr->pad + 1);
+    create_table(table_name,table_type,names,table_ptr->match_field_num,ingress,egress,actions);
     free(names);
-    p4_compile();
+    pid_t pid;
+    pid = fork();
+    if (pid == 0){
+        int fd = open("out",O_RDWR,0);
+        if (fd == -1){
+           exit(0);
+        }
+        dup2(fd,stdout);
+        p4_compile();
+        dup2(stdout,fd);
+        close(fd);
+        exit(0);
+    }
+
 }
 
 /*******************************************************************************
