@@ -506,12 +506,33 @@ uint8_t bits_to_uint8_t(uint8_t *result_cnt, uint8_t pos, uint8_t len) {
     }
     return result_uint8_t;
 }
-char *control_match_ingress(char *buf) {
+char *match_ingress_control(char *buf) {
     //TODO
+    const char *match = "control egress";
+    char *pos = strstr(buf, match);
+    if (pos == NULL) {
+        POF_ERROR_CPRINT(1,GREEN,"error for pos of ingress control");
+    }
+    while (*pos != '}' && pos != buf ) {
+        pos--;
+    }
+    while (*pos != '\n') {
+        pos--;
+    }
+    return pos + 1;
 }
 
-char *control_match_egress(char *buf) {
+char *match_egress_control(char *buf) {
     //TODO
+    char *pos = buf + strlen(buf) - 1;
+    while (*pos != '}') {
+        pos--;
+    }
+    while (*pos != '\n') {
+        pos--;
+    }
+    return pos + 1;
+
 }
 void pof_safe_free_mem(uint8_t n_values, ...) {
     va_list var_arg;
@@ -524,4 +545,15 @@ void pof_safe_free_mem(uint8_t n_values, ...) {
     }
     va_end(var_arg);
     return;
+}
+void pof_add_action_to_p4(const char **names, uint8_t actions, char *buf) {
+    uint8_t i;
+    i = 0;
+    while (actions) {
+        if (actions & 0x01) {
+            strcat(buf, names[i]);
+        }
+        i++;
+        actions >>= 1;
+    }
 }

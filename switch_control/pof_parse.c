@@ -49,7 +49,7 @@ uint8_t len[4] = {3, 1, 12, 16};
 char *flags[2] = {"0", "0"};//4 represent there are 4 flags can be set
 const char *eth_name[LEN] = {"eth.dst", "eth.src", "ipv4.srcAddr", "ipv4.dstAddr"};
 const char *cmd_name[7] = {"add", "edit", "edit_strict", "delete", "delete_strict", "list", "list-result"};
-
+const char *action_name[4] = {"drop_act;\n\t\t", "fwd_act;\n\t\t", "add_field;\n\t\t", "set_field;\n\t\t"};
 void pof_json_rule_to_nic(pof_flow_entry *flow_entry, cJSON **json, uint8_t cmd) {
     uint8_t table_id = flow_entry->table_id;
     uint16_t priority = flow_entry->priority;
@@ -124,16 +124,15 @@ void pof_json_rule_to_nic(pof_flow_entry *flow_entry, cJSON **json, uint8_t cmd)
     }
 
     POF_DEBUG_CPRINT_FL(1, GREEN, "pof_nic_cli  %s\n", pof_nic_cli);
-    if (system(pof_nic_cli)){
+    if (system(pof_nic_cli)) {
         POF_DEBUG("system call add_rule to smartnic\n");
-    }
-    else {
+    } else {
         POF_DEBUG("system call error \n");
     }
 
     free(buf_action);
     free(buf_match);
-    pof_safe_free_mem(2,pof_nic_cli,rule_name);
+    pof_safe_free_mem(2, pof_nic_cli, rule_name);
 
     if (json) {
 
@@ -366,32 +365,10 @@ void pof_send_msg_to_nic(char *msg_ptr) {
 
 #define MAX_LINE_LENGTH 1024
 
-char *control_match(char *buf) {
-    char *ret_ptr = NULL, *egress_control = NULL;
-    POF_DEBUG_CPRINT_FL(1, GREEN, "%s", buf);
-    const char *pattern = "control egress";
-    regmatch_t regmatch;
-    regex_t reg;
-    assert(regcomp(&reg, pattern, REG_EXTENDED | REG_NEWLINE) == 0);
-    int status = regexec(&reg, buf, 1, &regmatch, 0);
 
-    if (status == REG_NOMATCH) {
-        return NULL;
-    } else if (regmatch.rm_so != -1) {
-
-        ret_ptr = buf + regmatch.rm_so;
-
-    }
-    regfree(&reg);
-    return ret_ptr + 1;
-
-}
-
-
-
-void create_table(char *table_name, uint8_t table_type,
-                  char **name, uint8_t names_size,
-                  bool ingress, bool egress, uint8_t actions, uint8_t valid) {
+void pof_create_table(char *table_name, uint8_t table_type,
+                      char **name, uint8_t names_size,
+                      bool ingress, bool egress, uint8_t actions, uint8_t valid) {
     FILE *p4;
     p4 = fopen("p4", "r+");
     if (p4 == NULL) {
@@ -415,14 +392,11 @@ void create_table(char *table_name, uint8_t table_type,
     strcpy(buf_tmp, insert_line_pos);
 
     char *table = (char *) malloc(sizeof(char) * MAX_LINE_LENGTH * 10);
-
     memset(table, 0, MAX_LINE_LENGTH * 10);
-
     sprintf(table, "%stable %s{\n\treads{\n\t\t", table, table_name);
     uint8_t i = 0;
     for (; i < names_size; i++) {
-        strcat(table, name[i]);
-        strcat(table, ":");
+        sprintf(table,"%s%s%s",table,name[i],":");
         switch (table_type) {
             case POF_MM_TABLE:
                 strcat(table, "lpm");
@@ -436,34 +410,20 @@ void create_table(char *table_name, uint8_t table_type,
             default:
                 break;
         }
-
         strcat(table, ";\n\t\t");
     }
     table[strlen(table) - 1] = '\0';
-
     sprintf(table, "%s}\n\tactions{\n\t\t", table);
-
-    char *action_name[4] = {"drop_act;\n\t\t", "fwd_act;\n\t\t", "add_field;\n\t\t", "set_field;\n\t\t"};
-    i = 0;
-    while (actions) {
-        if (actions & 0x01) {
-            strcat(table, action_name[i]);
-        }
-        i++;
-        actions >>= 1;
-    }
+    pof_add_action_to_p4(action_name, actions, table);
 
     table[strlen(table) - 1] = '\0';
-    strcat(table, "}\n");
-    strcat(table, "}\n");
-    POF_DEBUG_CPRINT_FL(1, GREEN, "table is %s \n", table);
+    strcat(table, "}\n}\n");
+    POF_DEBUG_CPRINT_FL(1, GREEN, "p4 table is %s \n", table);
     strcpy(insert_line_pos, table);
-    //apply table to control
-    //regexp match
     char *ingress_control = NULL;
     char *egress_control = NULL;
-    ingress_control = control_match(buf_tmp);
-    egress_control = control_match(ingress_control + 1);
+    ingress_control = match_ingress_control(buf_tmp);
+    egress_control = match_egress_control(buf_tmp);
     if (ingress_control == NULL) {
         POF_DEBUG_CPRINT(1, GREEN, "the ingress is NULL");
         return;
@@ -492,7 +452,6 @@ void create_table(char *table_name, uint8_t table_type,
         if (valid) {
             strcpy(buf_tmp_control, egress_control);
             memset(egress_control, 0, strlen(egress_control));
-            //strcpy(egress_control,"\tif(flag==1){\n\t\t");
             sprintf(egress_control, "%s%s%s%s", egress_control, "\tif(", POF_VALID_FLAG(_1), "){\n\t\t");
             sprintf(egress_control, "%sapply"
                     "(%s);\n\t}\n", egress_control, table_name);
@@ -510,15 +469,7 @@ void create_table(char *table_name, uint8_t table_type,
     POF_DEBUG_CPRINT_FL(1, GREEN, "p4 is %s \n", p4_contents);
     rewind(p4);
     assert(fwrite(p4_contents, 1, strlen(p4_contents), p4) != 0);
-    pof_safe_free_mem(4,table,buf_tmp,buf_tmp_control,p4_contents);
-//    free(table);
-//    free(buf_tmp);
-//    free(buf_tmp_control);
-//    free(p4_contents);
-//    table = NULL;
-//    buf_tmp = NULL;
-//    buf_tmp_control = NULL;
-//    p4_contents = NULL;
+    pof_safe_free_mem(4, table, buf_tmp, buf_tmp_control, p4_contents);
     insert_line_pos = NULL;
     fflush(p4);
     fclose(p4);
@@ -599,7 +550,7 @@ void pof_table_to_p4(void *msg_ptr) {
     ingress = *(table_ptr->pad);
     uint8_t actions = *(table_ptr->pad + 1);
     uint8_t valid = *(table_ptr->pad + 2);
-    create_table(table_name, table_type, names, table_ptr->match_field_num, ingress, egress, actions, valid);
+    pof_create_table(table_name, table_type, names, table_ptr->match_field_num, ingress, egress, actions, valid);
     free(names);
     pid_t pid;
     pid = fork();
@@ -687,7 +638,6 @@ uint32_t pof_parse_msg_from_controller(char *msg_ptr, struct pof_datapath *dp, i
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
 
             HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap) {
-                POF_DEBUG_CPRINT_FL(1, GREEN, "@poflr_reply_table_resource\n");
                 ret = poflr_reply_table_resource(i, lr);
                 POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
             }
@@ -765,7 +715,6 @@ uint32_t pof_parse_msg_from_controller(char *msg_ptr, struct pof_datapath *dp, i
             POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
             POF_DEBUG_CPRINT_FL(1, GREEN, ">>Handle features request message");
             HMAP_NODES_IN_STRUCT_TRAVERSE(lr, next, slotNode, dp->slotMap) {
-                POF_DEBUG_CPRINT_FL(1, GREEN, ">>the controller is %d\n", i);
                 ret = poflr_reply_feature_resource(i, lr);
                 POF_CHECK_RETVALUE_RETURN_NO_UPWARD(ret);
             }
