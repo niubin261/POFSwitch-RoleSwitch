@@ -31,26 +31,25 @@
 #include "../include/pof_log_print.h"
 #include "cjson/cJSON.h"
 #include <assert.h>
-#include <regex.h>
 #include <zconf.h>
 #include <fcntl.h>
 
 /* Xid in OpenFlow header received from Controller. */
-
 uint32_t g_recv_xid = POF_INITIAL_XID;
 
-uint32_t port_pos[LEN] = {0, 1, 2, 3};
+static uint32_t port_pos[LEN] = {0, 1, 2, 3};
 
-const char *port_name[LEN] = {"v0.0", "v0.1", "v0.2", "v0.3"};
+static const char *port_name[LEN] = {"v0.0", "v0.1", "v0.2", "v0.3"};
 
-uint32_t eth_pos[LEN] = {0, 48, 208, 240};
+static uint32_t eth_pos[LEN] = {0, 48, 208, 240};
 
-uint8_t len[4] = {3, 1, 12, 16};
-char *flags[2] = {"0", "0"};//4 represent there are 4 flags can be set
-const char *eth_name[LEN] = {"eth.dst", "eth.src", "ipv4.srcAddr", "ipv4.dstAddr"};
-const char *cmd_name[7] = {"add", "edit", "edit_strict", "delete", "delete_strict", "list", "list-result"};
-const char *action_name[4] = {"drop_act;\n\t\t", "fwd_act;\n\t\t", "add_field;\n\t\t", "set_field;\n\t\t"};
-void pof_json_rule_to_nic(pof_flow_entry *flow_entry, cJSON **json, uint8_t cmd) {
+static uint8_t len[4] = {3, 1, 12, 16};
+static char *flags[2] = {"0", "0"};//4 represent there are 4 flags can be set
+static const char *eth_name[LEN] = {"eth.dst", "eth.src", "ipv4.srcAddr", "ipv4.dstAddr"};
+static const char *cmd_name[7] = {"add", "edit", "edit_strict", "delete", "delete_strict", "list", "list-result"};
+static const char *action_name[4] = {"drop_act;\n\t\t", "fwd_act;\n\t\t", "add_field;\n\t\t", "set_field;\n\t\t"};
+
+static void pof_json_rule_to_nic(pof_flow_entry *flow_entry, cJSON **json, uint8_t cmd) {
     uint8_t table_id = flow_entry->table_id;
     uint16_t priority = flow_entry->priority;
 
@@ -61,7 +60,7 @@ void pof_json_rule_to_nic(pof_flow_entry *flow_entry, cJSON **json, uint8_t cmd)
     memset((void *) pof_nic_cli, 0, 2048);
     if (!buf_action && !buf_match) {
         POF_ERROR_CPRINT("the json is NULL exit the task");
-        exit(0);
+        exit(EXIT_FAILURE);
     }
     if (!buf_match) {
         default_rule = true;
@@ -75,38 +74,22 @@ void pof_json_rule_to_nic(pof_flow_entry *flow_entry, cJSON **json, uint8_t cmd)
     memset(rule_name, 0, 64);
     sprintf(rule_name, "%d%d%d", now->tm_hour, now->tm_min, now->tm_sec);
 #define NIC_CLI_PY "sudo python /home/niubin/POFSwitch-RoleSwitch/client/sdk6_rte_cli.py tables"
-    strcat(pof_nic_cli, NIC_CLI_PY);
-    strcat(pof_nic_cli, " -r ");
-    strcat(pof_nic_cli, rule_name);
+    pof_p4_cli_strcat(pof_nic_cli, "%s%s%s", NIC_CLI_PY, " -r ", rule_name);
 
     if (default_rule) {
         strcat(pof_nic_cli, " -d ");
     } else {
-        strcat(pof_nic_cli, " -m ");
-        strcat(pof_nic_cli, "'");
-        strcat(pof_nic_cli, buf_match);
-        strcat(pof_nic_cli, "'");
+        pof_p4_cli_strcat(pof_nic_cli, "%s%s%s%s", " -m ", "'", buf_match, "'");
     }
-    strcat(pof_nic_cli, " -a ");
-    strcat(pof_nic_cli, "'");
-    strcat(pof_nic_cli, buf_action);
-    strcat(pof_nic_cli, "'");
-
+    pof_p4_cli_strcat(pof_nic_cli, "%s%s%s%s", " -a ", "'", buf_action, "'");
     char table_id_ptr[8];
-
     sprintf(table_id_ptr, "%d", table_id);
-
-    strcat(pof_nic_cli, " -i ");
-
-    strcat(pof_nic_cli, table_id_ptr);
+    pof_p4_cli_strcat(pof_nic_cli, "%s%s", " -i ", table_id_ptr);
     char priority_ptr[8] = {0};
     switch (cmd) {
         case POFFC_ADD://POFFC_ADD is add rules
-
             sprintf(priority_ptr, "%d", priority);
-            strcat(pof_nic_cli, " -p ");
-            strcat(pof_nic_cli, priority_ptr);
-            strcat(pof_nic_cli, " add");
+            pof_p4_cli_strcat(pof_nic_cli, "%s%s%s", " -p ", priority_ptr, " add");
             break;
         case POFFC_DELETE://POFFC_DELETE is delete rules
             strcat(pof_nic_cli, " delete");
@@ -114,9 +97,7 @@ void pof_json_rule_to_nic(pof_flow_entry *flow_entry, cJSON **json, uint8_t cmd)
         case POFFC_MODIFY://POFFC_MODIFY is modify rules
 
             sprintf(priority_ptr, "%d", priority);
-            strcat(pof_nic_cli, " -p ");
-            strcat(pof_nic_cli, priority_ptr);
-            strcat(pof_nic_cli, " edit");
+            pof_p4_cli_strcat(pof_nic_cli, "%s%s%s", " -p ", priority_ptr, " edit");
             break;
         default: //default is list-rules
             //Fixme TODO
@@ -141,7 +122,7 @@ void pof_json_rule_to_nic(pof_flow_entry *flow_entry, cJSON **json, uint8_t cmd)
     *(json + 1) = NULL;
 }
 
-void pof_flow_to_nic(pof_flow_entry *flow_ptr, uint8_t cmd) {
+static void pof_flow_to_nic(pof_flow_entry *flow_ptr, uint8_t cmd) {
     uint8_t i;
     uint8_t j;
 
@@ -153,7 +134,6 @@ void pof_flow_to_nic(pof_flow_entry *flow_ptr, uint8_t cmd) {
     cJSON *root_match = NULL;
     root_match = cJSON_CreateObject();
 
-    //for debug
 
     for (i = 0; i < match_field_num; i++) {
         char *k = NULL;
@@ -347,7 +327,7 @@ void pof_flow_to_nic(pof_flow_entry *flow_ptr, uint8_t cmd) {
 }
 
 
-void pof_send_msg_to_nic(char *msg_ptr) {
+static void pof_send_msg_to_nic(char *msg_ptr) {
     pof_flow_entry *flow_ptr;
     flow_ptr = (pof_flow_entry *) (msg_ptr + sizeof(pof_header));
     struct nic_match *nic_match_ptr = NULL;
@@ -366,18 +346,17 @@ void pof_send_msg_to_nic(char *msg_ptr) {
 #define MAX_LINE_LENGTH 1024
 
 
-void pof_create_table(char *table_name, uint8_t table_type,
+static void pof_create_table(char *table_name, uint8_t table_type,
                       char **name, uint8_t names_size,
-                      bool ingress, bool egress, uint8_t actions, uint8_t valid) {
-    FILE *p4;
-    p4 = fopen("p4", "r+");
+                      bool ingress, bool egress,
+                      uint8_t actions, uint8_t valid) {
+    FILE *p4 = fopen("p4", "r+");
     if (p4 == NULL) {
         POF_ERROR_CPRINT(1, RED, "p4 file open failed");
         return;
     }
     char *p4_contents = (char *) malloc(sizeof(char) * 100 * MAX_LINE_LENGTH);
     memset(p4_contents, 0, MAX_LINE_LENGTH * 100);
-
     fseek(p4, 0, SEEK_END);
     uint64_t size = ftell(p4);
     rewind(p4);
@@ -396,7 +375,7 @@ void pof_create_table(char *table_name, uint8_t table_type,
     sprintf(table, "%stable %s{\n\treads{\n\t\t", table, table_name);
     uint8_t i = 0;
     for (; i < names_size; i++) {
-        sprintf(table,"%s%s%s",table,name[i],":");
+        sprintf(table, "%s%s%s", table, name[i], ":");
         switch (table_type) {
             case POF_MM_TABLE:
                 strcat(table, "lpm");
@@ -476,7 +455,7 @@ void pof_create_table(char *table_name, uint8_t table_type,
     return;
 }
 
-void pof_p4_compile() {
+static void pof_p4_compile() {
 
     FILE *p4 = fopen("p4", "r");
     if (p4 == NULL) {
@@ -524,7 +503,7 @@ void pof_p4_compile() {
     return;
 }
 
-void pof_table_to_p4(void *msg_ptr) {
+static void pof_table_to_p4(void *msg_ptr) {
 
     POF_DEBUG_CPRINT(1, GREEN, "pof_table_to_p4");
     struct pof_flow_table *table_ptr = (struct pof_flow_table *) (msg_ptr + sizeof(pof_header));
@@ -557,13 +536,13 @@ void pof_table_to_p4(void *msg_ptr) {
     if (pid == 0) {
         int fd = open("out", O_RDWR, 0);
         if (fd == -1) {
-            exit(0);
+            exit(EXIT_FAILURE);
         }
         dup2(fd, STDERR_FILENO);
         //pof_p4_compile();
         dup2(STDERR_FILENO, fd);
         close(fd);
-        exit(0);
+        exit(EXIT_SUCCESS);
     }
     return;
 }
@@ -598,7 +577,7 @@ uint32_t pof_parse_msg_from_controller(char *msg_ptr, struct pof_datapath *dp, i
     uint16_t len;
     uint8_t msg_type;
     //uint32_t          queue_id =pofsc_send_q_id[i];
-    int j, role;
+    uint8_t j, role;
     header_ptr = (pof_header *) msg_ptr;
     len = POF_NTOHS(header_ptr->length);
 
