@@ -74,22 +74,22 @@ static void pof_json_rule_to_nic(pof_flow_entry *flow_entry, cJSON **json, uint8
     memset(rule_name, 0, 64);
     sprintf(rule_name, "%d%d%d", now->tm_hour, now->tm_min, now->tm_sec);
 #define NIC_CLI_PY "sudo python /home/niubin/POFSwitch-RoleSwitch/client/sdk6_rte_cli.py tables"
-    pof_p4_cli_strcat(pof_nic_cli, "%s%s%s", NIC_CLI_PY, " -r ", rule_name);
+    sprintf(pof_nic_cli, "%s%s%s", NIC_CLI_PY, " -r ", rule_name);
 
     if (default_rule) {
         strcat(pof_nic_cli, " -d ");
     } else {
-        pof_p4_cli_strcat(pof_nic_cli, "%s%s%s%s", " -m ", "'", buf_match, "'");
+        sprintf(pof_nic_cli, "%s%s%s%s", " -m ", "'", buf_match, "'");
     }
-    pof_p4_cli_strcat(pof_nic_cli, "%s%s%s%s", " -a ", "'", buf_action, "'");
+    sprintf(pof_nic_cli, "%s%s%s%s", " -a ", "'", buf_action, "'");
     char table_id_ptr[8];
     sprintf(table_id_ptr, "%d", table_id);
-    pof_p4_cli_strcat(pof_nic_cli, "%s%s", " -i ", table_id_ptr);
+    sprintf(pof_nic_cli, "%s%s", " -i ", table_id_ptr);
     char priority_ptr[8] = {0};
     switch (cmd) {
         case POFFC_ADD://POFFC_ADD is add rules
             sprintf(priority_ptr, "%d", priority);
-            pof_p4_cli_strcat(pof_nic_cli, "%s%s%s", " -p ", priority_ptr, " add");
+            sprintf(pof_nic_cli, "%s%s%s", " -p ", priority_ptr, " add");
             break;
         case POFFC_DELETE://POFFC_DELETE is delete rules
             strcat(pof_nic_cli, " delete");
@@ -97,7 +97,7 @@ static void pof_json_rule_to_nic(pof_flow_entry *flow_entry, cJSON **json, uint8
         case POFFC_MODIFY://POFFC_MODIFY is modify rules
 
             sprintf(priority_ptr, "%d", priority);
-            pof_p4_cli_strcat(pof_nic_cli, "%s%s%s", " -p ", priority_ptr, " edit");
+            sprintf(pof_nic_cli, "%s%s%s", " -p ", priority_ptr, " edit");
             break;
         default: //default is list-rules
             //Fixme TODO
