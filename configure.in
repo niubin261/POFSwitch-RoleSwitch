@@ -5,7 +5,7 @@ AC_PREREQ([2.68])
 #AC_INIT(pofswitch, 1.1.8.015, yujingzhou@huawei.com)
 #AC_INIT(pofswitch, 1.1.9.015, yujingzhou@huawei.com)
 AC_INIT(pofswitch, 1.4.0.015, yujingzhou@huawei.com)
-AC_CONFIG_SRCDIR([datapath/pof_datapath.c])
+AC_CONFIG_SRCDIR([switch_control/pof_switch.c])
 AM_INIT_AUTOMAKE
 
 #AC_DEFINE([POFSWITCH_VERSION_NO], [POFSwitch_VERSION_1_1_8])
@@ -20,7 +20,8 @@ AC_PROG_RANLIB
 
 # Checks for libraries.
 AC_CHECK_LIB([pthread], [pthread_create])
-
+AC_CHECK_LIB([cjson], [cJSON_CreateNull],[],[echo "Error!"
+exit -1])
 # Checks for header files.
 AC_CHECK_HEADERS([arpa/inet.h limits.h netinet/in.h stdlib.h string.h sys/socket.h sys/time.h unistd.h stddef.h stdbool.h endian.h])
 
