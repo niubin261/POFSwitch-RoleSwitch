@@ -19,9 +19,8 @@ AC_PROG_CC
 AC_PROG_RANLIB
 
 # Checks for libraries.
-AC_CHECK_LIB([pthread], [pthread_create])
-AC_CHECK_LIB([cjson], [cJSON_CreateNull],[],[echo "Error!"
-exit -1])
+AC_CHECK_LIB([pthread], [pthread_create],[],[AC_MSG_ERROR([Missing libpthread])])
+AC_CHECK_LIB([cjson], [cJSON_CreateNull],[],[AC_MSG_ERROR([Missing libcjson])])
 # Checks for header files.
 AC_CHECK_HEADERS([arpa/inet.h limits.h netinet/in.h stdlib.h string.h sys/socket.h sys/time.h unistd.h stddef.h stdbool.h endian.h])
 
