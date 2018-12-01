@@ -568,7 +568,7 @@ cmd(int sockfd)
 static uint32_t
 opt_version(char *optarg)
 {
-    printf("Version: %s.%s\n", POFSwitch_VERSION_STR, POFSWITCH_VERSION_SUB);
+//printf("Version: %s.%s\n", POFSwitch_VERSION_STR, POFSWITCH_VERSION_SUB);
     exit(0);
 }
 

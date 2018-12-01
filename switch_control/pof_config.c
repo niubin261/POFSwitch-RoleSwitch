@@ -588,7 +588,7 @@ versionInit(const char *version1, const char *version2)
  ***********************************************************************/
 uint32_t pof_set_init_config(int argc, char *argv[], struct pof_datapath *dp){
 	uint32_t ret;
-    versionInit(POFSwitch_VERSION_STR, POFSWITCH_VERSION_SUB);
+    //versionInit(POFSwitch_VERSION_STR, POFSWITCH_VERSION_SUB);
 	ret = pof_set_init_config_by_file(dp);
 	ret = pof_set_init_config_by_command(argc, argv, dp);
 
